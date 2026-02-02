@@ -1,0 +1,10 @@
+ref,year,alloy,wP,T_age_C,t_h,d_um,d_type,AES_type,AES_value,DBTT_C,metric,note
+Song et al.,2008,2.25Cr-1Mo (P-doped),0.05,480-560,Var,~55,PAGS,Cp (at%),Variable,Formula,Charpy vTrs,Linear Fit: DBTT = 3.38*Cp - 91.95
+Nakata et al.,2006,Low Alloy Steel (A533B),0.011,-,0,~30,Base Metal,PHR (P/Fe),0.038,-40,Charpy vTrs,As-received condition
+Nakata et al.,2006,Low Alloy Steel (A533B),0.011,400,3000,~30,Base Metal,PHR (P/Fe),0.066,-43,Charpy vTrs,No embrittlement (P/Fe < 0.14)
+Nakata et al.,2006,Low Alloy Steel (A533B),0.011,450,3000,~30,Base Metal,PHR (P/Fe),0.141,-28,Charpy vTrs,Embrittlement onset (Threshold ~0.14)
+Nakata et al.,2006,Low Alloy Steel (A533B),0.011,450,15000,~30,Base Metal,PHR (P/Fe),0.196,-7,Charpy vTrs,Significant embrittlement
+Nakata et al.,2006,Low Alloy Steel (A533B),0.011,500,1000,~30,Base Metal,PHR (P/Fe),0.120,-42,Charpy vTrs,Recovery (Desegregation)
+Chen et al.,2011,Ti-IF Steel,0.058,600-850,Var,48-225,Ferrite,Cp (at%),Variable,Formula,Charpy DBTT,Linear Fit: DBTT = 3.12*Cp - 118.87
+Wang et al.,2022,SA508-4N (Fine Grain),Doped,Var,Var,34,PAGS,Cp (at%),Variable,Formula,Mini-Charpy,Linear Fit: DBTT = 13.13*Cp - 335.70
+Wang et al.,2022,SA508-4N (Coarse Grain),Doped,Var,Var,112,PAGS,Cp (at%),Variable,Formula,Mini-Charpy,Linear Fit: DBTT = 6.69*Cp - 223.87

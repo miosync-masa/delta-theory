@@ -1,0 +1,6 @@
+ref,year,alloy,wP,T_age_C,t_h,d_um,d_type,AES_type,AES_value,DBTT_C,metric,note,r_GB,PHR
+Nakata et al.,2006,Low Alloy Steel (A533B),0.011,-,0,30,Base Metal,PHR (P/Fe),0.038,-40,Charpy vTrs,As-received condition,0.038,0.038
+Nakata et al.,2006,Low Alloy Steel (A533B),0.011,400,3000,30,Base Metal,PHR (P/Fe),0.066,-43,Charpy vTrs,No embrittlement (P/Fe < 0.14),0.066,0.066
+Nakata et al.,2006,Low Alloy Steel (A533B),0.011,450,3000,30,Base Metal,PHR (P/Fe),0.141,-28,Charpy vTrs,Embrittlement onset (Threshold ~0.14),0.141,0.141
+Nakata et al.,2006,Low Alloy Steel (A533B),0.011,450,15000,30,Base Metal,PHR (P/Fe),0.196,-7,Charpy vTrs,Significant embrittlement,0.196,0.196
+Nakata et al.,2006,Low Alloy Steel (A533B),0.011,500,1000,30,Base Metal,PHR (P/Fe),0.120,-42,Charpy vTrs,Recovery (Desegregation),0.12,0.12
