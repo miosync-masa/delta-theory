@@ -1,0 +1,16 @@
+# Core
+numpy>=1.20.0
+
+# Analysis (optional)
+scipy>=1.9.0
+pandas>=1.5.0
+matplotlib>=3.6.0
+
+# Validation API (optional)
+upstash-redis>=1.0.0
+
+# Web App (optional)
+streamlit>=1.20.0
+
+# Development (optional)
+pytest>=7.0.0

@@ -1,0 +1,103 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "delta-theory"
+version = "6.9.0"
+description = "Unified materials strength and fatigue prediction based on geometric first principles"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Masamichi Iizumi", email = "masamichi@miosync.com"},
+    {name = "Tamaki"},
+]
+maintainers = [
+    {name = "Masamichi Iizumi", email = "masamichi@miosync.com"},
+]
+keywords = [
+    "materials-science",
+    "fatigue",
+    "yield-strength",
+    "crystallography",
+    "delta-theory",
+    "physics",
+    "mechanical-engineering",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Chemistry",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.20.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+analysis = [
+    "scipy>=1.9.0",
+    "pandas>=1.5.0",
+    "matplotlib>=3.6.0",
+]
+validation = [
+    "upstash-redis>=1.0.0",
+]
+app = [
+    "streamlit>=1.20.0",
+]
+all = [
+    "delta-theory[dev,analysis,validation,app]",
+]
+
+[project.urls]
+Homepage = "https://github.com/miosync/delta-theory"
+Documentation = "https://github.com/miosync/delta-theory#readme"
+Repository = "https://github.com/miosync/delta-theory.git"
+Issues = "https://github.com/miosync/delta-theory/issues"
+Changelog = "https://github.com/miosync/delta-theory/blob/main/CHANGELOG.md"
+
+[project.scripts]
+delta-yield = "core.unified_yield_fatigue_v6_9:main"
+delta-dbt = "core.dbt_unified:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "validation*", "apps*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
+ignore = ["E501"]  # line too long (handled by black)
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
