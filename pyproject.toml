@@ -93,8 +93,16 @@ target-version = ["py39", "py310", "py311", "py312"]
 [tool.ruff]
 line-length = 100
 target-version = "py39"
-select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
-ignore = ["E501"]  # line too long (handled by black)
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4"]
+ignore = [
+    "E501",   # line too long (handled by black)
+    "UP035",  # deprecated typing.Dict/List (we use for compatibility)
+    "UP006",  # use dict instead of Dict
+    "UP045",  # use X | None instead of Optional[X]
+]
+# Note: "N" (pep8-naming) removed - physics code uses T_m, E, G etc.
 
 [tool.mypy]
 python_version = "3.9"
