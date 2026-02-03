@@ -360,6 +360,15 @@ FATIGUE_CLASS_PRESET = {
     'HCP': {'r_th': 0.20, 'n': 9.0},
 }
 
+# ==============================================================================
+# Helpers
+# ==============================================================================
+
+def get_minimal_material(structure: Literal['BCC', 'FCC', 'HCP']) -> Material:
+    """結晶構造だけで最小限のMaterialを取得（合金検証用）"""
+    base = {'BCC': Fe, 'FCC': Cu, 'HCP': Ti}
+    return base[structure]
+
 # A_int from δ parameters (normalized to Fe)
 A_INT_DB = {
     'Fe': 1.00,
@@ -373,7 +382,6 @@ A_INT_DB = {
     'Au': 1.00,
     'Ag': 1.00,
 }
-
 
 def lambda_from_damage(D: float) -> float:
     """Λ(D)=D/(1-D)."""
@@ -489,35 +497,55 @@ def generate_sn_curve(
 # ==============================================================================
 
 def cmd_point(args: argparse.Namespace) -> None:
-    mat0 = MATERIALS[args.metal]
-    mat = replace(
-        mat0,
-        A_texture=float(args.A_texture),
-        T_twin=(float(args.T_twin) if args.T_twin is not None else mat0.T_twin),
-        R_comp=(float(args.R_comp) if args.R_comp is not None else mat0.R_comp),
-        c_a=float(args.c_a) if args.c_a is not None else mat0.c_a,
-    )
+    # material 取得（metal or structure_only）
+    if args.metal is None and args.structure_only is None:
+        raise SystemExit("Error: --metal or --structure_only required")
+    
+    if args.structure_only:
+        mat = get_minimal_material(args.structure_only)
+    else:
+        mat0 = MATERIALS[args.metal]
+        mat = replace(
+            mat0,
+            A_texture=float(args.A_texture),
+            T_twin=(float(args.T_twin) if args.T_twin is not None else mat0.T_twin),
+            R_comp=(float(args.R_comp) if args.R_comp is not None else mat0.R_comp),
+            c_a=float(args.c_a) if args.c_a is not None else mat0.c_a,
+        )
 
-    y = calc_sigma_y(
-        mat,
-        T_K=args.T_K,
-        c_wt_percent=args.c_wt,
-        k_ss=args.k_ss,
-        solute_type=args.solute_type,
-        eps=args.eps,
-        rho_0=args.rho_0,
-        r_ppt_nm=args.r_ppt_nm,
-        f_ppt=args.f_ppt,
-        gamma_apb=args.gamma_apb,
-        A_ppt=args.A_ppt,
-    )
+    # σ_y 計算 or override
+    if args.sigma_y_override is not None:
+        sigma_y = args.sigma_y_override
+        y = {
+            'sigma_y': sigma_y,
+            'sigma_base': sigma_y,
+            'delta_ss': 0.0,
+            'delta_wh': 0.0,
+            'delta_ppt': 0.0,
+            'ppt_mechanism': 'N/A (override)',
+        }
+    else:
+        y = calc_sigma_y(
+            mat,
+            T_K=args.T_K,
+            c_wt_percent=args.c_wt,
+            k_ss=args.k_ss,
+            solute_type=args.solute_type,
+            eps=args.eps,
+            rho_0=args.rho_0,
+            r_ppt_nm=args.r_ppt_nm,
+            f_ppt=args.f_ppt,
+            gamma_apb=args.gamma_apb,
+            A_ppt=args.A_ppt,
+        )
+        sigma_y = y['sigma_y']
 
     # Fatigue (optional)
     if args.sigma_a is not None:
         out = fatigue_life_const_amp(
             mat,
             sigma_a_MPa=float(args.sigma_a),
-            sigma_y_tension_MPa=float(y['sigma_y']),
+            sigma_y_tension_MPa=float(sigma_y),
             A_ext=float(args.A_ext),
             mode=args.mode,
             D_fail=args.D_fail,
@@ -528,14 +556,16 @@ def cmd_point(args: argparse.Namespace) -> None:
     else:
         out = None
 
+    # 表示
+    label = f"structure={mat.structure}" if args.structure_only else f"metal={mat.name} ({mat.structure})"
     print("=" * 88)
-    print(f"v6.9b point | metal={mat.name} ({mat.structure}) | mode={args.mode}")
+    print(f"v6.9b point | {label} | mode={args.mode}")
     print("=" * 88)
 
     # Yield summary
     y_mode, diag = yield_by_mode(
         mat,
-        sigma_y_tension_MPa=float(y['sigma_y']),
+        sigma_y_tension_MPa=float(sigma_y),
         mode=args.mode,
         C_class=args.C_class,
         bcc_w110=args.bcc_w110,
@@ -543,11 +573,15 @@ def cmd_point(args: argparse.Namespace) -> None:
     )
 
     print("[Yield v5.0]")
-    print(f"  σ_base   = {y['sigma_base']:.2f} MPa")
-    print(f"  Δσ_ss    = {y['delta_ss']:.2f} MPa")
-    print(f"  Δσ_wh    = {y['delta_wh']:.2f} MPa  (rho_0={args.rho_0:.2e})")
-    print(f"  Δσ_ppt   = {y['delta_ppt']:.2f} MPa  ({y['ppt_mechanism']})")
-    print(f"  σ_y(t)   = {y['sigma_y']:.2f} MPa")
+    if args.sigma_y_override is not None:
+        print(f"  σ_y(override) = {sigma_y:.2f} MPa")
+    else:
+        print(f"  σ_base   = {y['sigma_base']:.2f} MPa")
+        print(f"  Δσ_ss    = {y['delta_ss']:.2f} MPa")
+        print(f"  Δσ_wh    = {y['delta_wh']:.2f} MPa  (rho_0={args.rho_0:.2e})")
+        print(f"  Δσ_ppt   = {y['delta_ppt']:.2f} MPa  ({y['ppt_mechanism']})")
+        print(f"  σ_y(t)   = {y['sigma_y']:.2f} MPa")
+    
     print("[Class factors v4.1]")
     print(f"  C_class  = {args.C_class:.4f}  (apply to HCP: {args.apply_C_class_hcp})")
     print(f"  bcc_w110 = {args.bcc_w110:.3f}")
@@ -577,35 +611,47 @@ def cmd_point(args: argparse.Namespace) -> None:
 
 def cmd_calibrate(args: argparse.Namespace) -> None:
     """Calibrate A_ext from one (σ_a, N_fail) point."""
-    mat0 = MATERIALS[args.metal]
-    mat = replace(
-        mat0,
-        A_texture=float(args.A_texture),
-        T_twin=(float(args.T_twin) if args.T_twin is not None else mat0.T_twin),
-        R_comp=(float(args.R_comp) if args.R_comp is not None else mat0.R_comp),
-        c_a=float(args.c_a) if args.c_a is not None else mat0.c_a,
-    )
+    # material 取得
+    if args.metal is None and args.structure_only is None:
+        raise SystemExit("Error: --metal or --structure_only required")
+    
+    if args.structure_only:
+        mat = get_minimal_material(args.structure_only)
+    else:
+        mat0 = MATERIALS[args.metal]
+        mat = replace(
+            mat0,
+            A_texture=float(args.A_texture),
+            T_twin=(float(args.T_twin) if args.T_twin is not None else mat0.T_twin),
+            R_comp=(float(args.R_comp) if args.R_comp is not None else mat0.R_comp),
+            c_a=float(args.c_a) if args.c_a is not None else mat0.c_a,
+        )
 
-    y = calc_sigma_y(
-        mat,
-        T_K=args.T_K,
-        c_wt_percent=args.c_wt,
-        k_ss=args.k_ss,
-        solute_type=args.solute_type,
-        eps=args.eps,
-        rho_0=args.rho_0,
-        r_ppt_nm=args.r_ppt_nm,
-        f_ppt=args.f_ppt,
-        gamma_apb=args.gamma_apb,
-        A_ppt=args.A_ppt,
-    )
+    # σ_y
+    if args.sigma_y_override is not None:
+        sigma_y = args.sigma_y_override
+    else:
+        y = calc_sigma_y(
+            mat,
+            T_K=args.T_K,
+            c_wt_percent=args.c_wt,
+            k_ss=args.k_ss,
+            solute_type=args.solute_type,
+            eps=args.eps,
+            rho_0=args.rho_0,
+            r_ppt_nm=args.r_ppt_nm,
+            f_ppt=args.f_ppt,
+            gamma_apb=args.gamma_apb,
+            A_ppt=args.A_ppt,
+        )
+        sigma_y = y['sigma_y']
 
     preset = FATIGUE_CLASS_PRESET.get(mat.structure, FATIGUE_CLASS_PRESET['FCC'])
     r_th, n = preset['r_th'], preset['n']
 
     y_mode, _ = yield_by_mode(
         mat,
-        sigma_y_tension_MPa=float(y['sigma_y']),
+        sigma_y_tension_MPa=float(sigma_y),
         mode=args.mode,
         C_class=args.C_class,
         bcc_w110=args.bcc_w110,
@@ -625,11 +671,12 @@ def cmd_calibrate(args: argparse.Namespace) -> None:
     A_eff = rate_needed / ((r - r_th) ** n)
     A_ext = A_eff / A_int
 
+    label = f"structure={mat.structure}" if args.structure_only else f"metal={mat.name} ({mat.structure})"
     print("=" * 88)
     print("v6.9b calibrate A_ext")
     print("=" * 88)
-    print(f"metal={mat.name} ({mat.structure}), mode={args.mode}")
-    print(f"σ_y(tension) = {y['sigma_y']:.3f} MPa")
+    print(f"{label}, mode={args.mode}")
+    print(f"σ_y = {sigma_y:.3f} MPa {'(override)' if args.sigma_y_override else '(calc)'}")
     print(f"yield(mode)  = {y_mode:.3f} MPa")
     print(f"amp          = {args.sigma_a:.3f} MPa {'(τ_a)' if args.mode=='shear' else ''}")
     print(f"r={r:.6f}, r_th={r_th:.3f}, n={n:.2f}")
@@ -638,33 +685,45 @@ def cmd_calibrate(args: argparse.Namespace) -> None:
 
 
 def cmd_sn(args: argparse.Namespace) -> None:
-    mat0 = MATERIALS[args.metal]
-    mat = replace(
-        mat0,
-        A_texture=float(args.A_texture),
-        T_twin=(float(args.T_twin) if args.T_twin is not None else mat0.T_twin),
-        R_comp=(float(args.R_comp) if args.R_comp is not None else mat0.R_comp),
-        c_a=float(args.c_a) if args.c_a is not None else mat0.c_a,
-    )
+    # material 取得
+    if args.metal is None and args.structure_only is None:
+        raise SystemExit("Error: --metal or --structure_only required")
+    
+    if args.structure_only:
+        mat = get_minimal_material(args.structure_only)
+    else:
+        mat0 = MATERIALS[args.metal]
+        mat = replace(
+            mat0,
+            A_texture=float(args.A_texture),
+            T_twin=(float(args.T_twin) if args.T_twin is not None else mat0.T_twin),
+            R_comp=(float(args.R_comp) if args.R_comp is not None else mat0.R_comp),
+            c_a=float(args.c_a) if args.c_a is not None else mat0.c_a,
+        )
 
-    y = calc_sigma_y(
-        mat,
-        T_K=args.T_K,
-        c_wt_percent=args.c_wt,
-        k_ss=args.k_ss,
-        solute_type=args.solute_type,
-        eps=args.eps,
-        rho_0=args.rho_0,
-        r_ppt_nm=args.r_ppt_nm,
-        f_ppt=args.f_ppt,
-        gamma_apb=args.gamma_apb,
-        A_ppt=args.A_ppt,
-    )
+    # σ_y
+    if args.sigma_y_override is not None:
+        sigma_y = args.sigma_y_override
+    else:
+        y = calc_sigma_y(
+            mat,
+            T_K=args.T_K,
+            c_wt_percent=args.c_wt,
+            k_ss=args.k_ss,
+            solute_type=args.solute_type,
+            eps=args.eps,
+            rho_0=args.rho_0,
+            r_ppt_nm=args.r_ppt_nm,
+            f_ppt=args.f_ppt,
+            gamma_apb=args.gamma_apb,
+            A_ppt=args.A_ppt,
+        )
+        sigma_y = y['sigma_y']
 
     sigmas = np.linspace(args.sigma_min, args.sigma_max, args.num)
     Ns = generate_sn_curve(
         mat,
-        sigma_y_tension_MPa=float(y['sigma_y']),
+        sigma_y_tension_MPa=float(sigma_y),
         A_ext=args.A_ext,
         sigmas_MPa=sigmas,
         mode=args.mode,
@@ -674,17 +733,18 @@ def cmd_sn(args: argparse.Namespace) -> None:
         apply_C_class_hcp=args.apply_C_class_hcp,
     )
 
+    label = f"structure={mat.structure}" if args.structure_only else f"metal={mat.name} ({mat.structure})"
     print("=" * 88)
-    print(f"v6.9b S-N | metal={mat.name} ({mat.structure}) | mode={args.mode}")
+    print(f"v6.9b S-N | {label} | mode={args.mode}")
     print("=" * 88)
-    print(f"σ_y(tension)={y['sigma_y']:.3f} MPa | A_ext={args.A_ext:.3e} | D_fail={args.D_fail:.3f}")
+    print(f"σ_y={sigma_y:.3f} MPa {'(override)' if args.sigma_y_override else '(calc)'} | A_ext={args.A_ext:.3e} | D_fail={args.D_fail:.3f}")
 
     header_amp = 'sigma_a_MPa' if args.mode != 'shear' else 'tau_a_MPa'
     print(f"{header_amp:>12} {'N_fail':>14} {'log10N':>10} {'r':>10} {'note':>10}")
     for s, N in zip(sigmas, Ns):
         y_mode, _ = yield_by_mode(
             mat,
-            sigma_y_tension_MPa=float(y['sigma_y']),
+            sigma_y_tension_MPa=float(sigma_y),
             mode=args.mode,
             C_class=args.C_class,
             bcc_w110=args.bcc_w110,
@@ -702,7 +762,14 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest='cmd', required=True)
 
     def add_common(sp: argparse.ArgumentParser):
-        sp.add_argument('--metal', required=True, choices=sorted(MATERIALS.keys()))
+        # metal OR structure_only
+        sp.add_argument('--metal', choices=sorted(MATERIALS.keys()), default=None,
+                        help='Material from database')
+        sp.add_argument('--structure_only', choices=['BCC', 'FCC', 'HCP'], default=None,
+                        help='Use structure preset only (for alloy validation)')
+        sp.add_argument('--sigma_y_override', type=float, default=None,
+                        help='Override σ_y with experimental value [MPa]')
+        
         sp.add_argument('--T_K', type=float, default=300.0)
         sp.add_argument('--c_wt', type=float, default=0.0, help='solute wt%% (e.g., 0.10 for 0.10 wt%%)')
         sp.add_argument('--k_ss', type=float, default=0.0, help='solid-solution k [MPa/(wt%%)^n]')
