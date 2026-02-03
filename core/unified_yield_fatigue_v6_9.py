@@ -679,8 +679,8 @@ def cmd_calibrate(args: argparse.Namespace) -> None:
         sigma_y = y['sigma_y']
 
     preset = FATIGUE_CLASS_PRESET[mat.structure]
-    r_th = r_th_override if r_th_override is not None else preset['r_th']
-    n = n_override if n_override is not None else preset['n']
+    r_th = args.r_th if args.r_th is not None else preset['r_th']
+    n = args.n_exp if args.n_exp is not None else preset['n']
 
     y_mode, _ = yield_by_mode(
         mat,
