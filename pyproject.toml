@@ -13,7 +13,7 @@ authors = [
     {name = "Tamaki"},
 ]
 maintainers = [
-    {name = "Masamichi Iizumi", email = "masamichi@miosync.com"},
+    {name = "Masamichi Iizumi", email = "m.iizumi@miosync.email"},
 ]
 keywords = [
     "materials-science",
