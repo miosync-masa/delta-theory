@@ -7,7 +7,7 @@ Modules:
     - unified_yield_fatigue_v6_9: Main yield + fatigue model (v6.9b)
     - dbt_unified: Ductile-Brittle Transition Temperature prediction
     - materials: Material database
-    - fatigue_redis_api: FatigueData-AM2022 Redis API
+    - fatigue_redis_api: FatigueData-AM2022 Redis API (optional)
 """
 
 from .unified_yield_fatigue_v6_9 import (
@@ -31,9 +31,13 @@ from .dbt_unified import (
 
 from .materials import MaterialGPU
 
-from .fatigue_redis_api import FatigueDB  # ← 追加！
+# Optional: FatigueDB (requires upstash-redis)
+try:
+    from .fatigue_redis_api import FatigueDB
+except ImportError:
+    FatigueDB = None  # upstash-redis not installed
 
-__version__ = "6.10.1"  # ← バージョンも上げる！
+__version__ = "6.10.1"
 __author__ = "Masamichi Iizumi & Tamaki"
 
 __all__ = [
@@ -54,6 +58,6 @@ __all__ = [
     "MATERIAL_FE",
     # Materials
     "MaterialGPU",
-    # FatigueDB
-    "FatigueDB",  # ← 追加！
+    # FatigueDB (optional)
+    "FatigueDB",
 ]
