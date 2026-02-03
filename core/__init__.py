@@ -54,7 +54,6 @@ from .unified_yield_fatigue_v6_9 import (
     
     # Multiaxial (τ/σ, R)
     yield_by_mode,
-    tau_sigma_ratio,
     T_TWIN,
     R_COMP,
 )
@@ -127,7 +126,6 @@ __all__ = [
     "fatigue_life_const_amp",
     "generate_sn_curve",
     "yield_by_mode",
-    "tau_sigma_ratio",
     "FATIGUE_CLASS_PRESET",
     "T_TWIN",
     "R_COMP",
