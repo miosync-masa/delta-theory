@@ -432,12 +432,14 @@ def fatigue_life_const_amp(
     C_class: float = C_CLASS_DEFAULT,
     bcc_w110: float = DEFAULT_BCC_W110,
     apply_C_class_hcp: bool = False,
+    r_th_override: float | None = None,
+    n_override: float | None = None,
 ) -> Dict[str, float | str]:
     """Fatigue life under constant amplitude for the chosen loading mode."""
 
-    preset = FATIGUE_CLASS_PRESET.get(mat.structure, FATIGUE_CLASS_PRESET['FCC'])
-    r_th = preset['r_th']
-    n = preset['n']
+    preset = FATIGUE_CLASS_PRESET[mat.structure]
+    r_th = r_th_override if r_th_override is not None else preset['r_th']
+    n = n_override if n_override is not None else preset['n']
 
     A_int = A_INT_DB.get(mat.name, 1.0)
     A_eff = A_int * A_ext
@@ -485,6 +487,8 @@ def generate_sn_curve(
     C_class: float = C_CLASS_DEFAULT,
     bcc_w110: float = DEFAULT_BCC_W110,
     apply_C_class_hcp: bool = False,
+    r_th_override: float | None = None,
+    n_override: float | None = None,
 ) -> np.ndarray:
     Ns = []
     for s in sigmas_MPa:
@@ -498,6 +502,8 @@ def generate_sn_curve(
             C_class=C_class,
             bcc_w110=bcc_w110,
             apply_C_class_hcp=apply_C_class_hcp,
+            r_th_override=r_th_override,
+            n_override=n_override,
         )
         Ns.append(out['N_fail'])
     return np.array(Ns, dtype=float)
@@ -576,6 +582,8 @@ def cmd_point(args: argparse.Namespace) -> None:
             C_class=args.C_class,
             bcc_w110=args.bcc_w110,
             apply_C_class_hcp=args.apply_C_class_hcp,
+            r_th_override=args.r_th,
+            n_override=args.n_exp,
         )
     else:
         out = None
@@ -670,8 +678,9 @@ def cmd_calibrate(args: argparse.Namespace) -> None:
         )
         sigma_y = y['sigma_y']
 
-    preset = FATIGUE_CLASS_PRESET.get(mat.structure, FATIGUE_CLASS_PRESET['FCC'])
-    r_th, n = preset['r_th'], preset['n']
+    preset = FATIGUE_CLASS_PRESET[mat.structure]
+    r_th = r_th_override if r_th_override is not None else preset['r_th']
+    n = n_override if n_override is not None else preset['n']
 
     y_mode, _ = yield_by_mode(
         mat,
@@ -755,6 +764,8 @@ def cmd_sn(args: argparse.Namespace) -> None:
         C_class=args.C_class,
         bcc_w110=args.bcc_w110,
         apply_C_class_hcp=args.apply_C_class_hcp,
+        r_th_override=args.r_th,
+        n_override=args.n_exp,
     )
 
     label = f"structure={mat.structure}" if args.structure_only else f"metal={mat.name} ({mat.structure})"
@@ -818,6 +829,8 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument('--mode', choices=['tensile', 'compression', 'shear'], default='tensile')
         sp.add_argument('--A_ext', type=float, default=2.46e-4, help='external factor (1-point calibration)')
         sp.add_argument('--D_fail', type=float, default=0.5)
+        sp.add_argument('--r_th', type=float, default=None, help='Override r_th (fatigue threshold ratio)')
+        sp.add_argument('--n_exp', type=float, default=None, help='Override n (fatigue exponent)')
 
     sp_point = sub.add_parser('point', help='compute yield (+ optional fatigue life)')
     add_common(sp_point)
