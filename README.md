@@ -4,7 +4,7 @@
 
 **"Nature is Geometry"** — Predicting material properties from geometric first principles
 
-[![Tests](https://github.com/miosync/delta-theory/actions/workflows/tests.yml/badge.svg)](https://github.com/miosync-masa/delta-theory/blob/main/.github/workflows/tests.yml)
+[![Tests](https://github.com/miosync/delta-theory/actions/workflows/tests.yml/badge.svg)](.github/workflows/tests.yml)
 [![PyPI](https://img.shields.io/pypi/v/delta-theory.svg)](https://pypi.org/project/delta-theory/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
