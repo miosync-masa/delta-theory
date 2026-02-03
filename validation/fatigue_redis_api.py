@@ -32,6 +32,7 @@ Date: 2026-02-02
 import json
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
+import os
 
 try:
     from upstash_redis import Redis
@@ -42,10 +43,17 @@ except ImportError:
 # =============================================================================
 # Configuration
 # =============================================================================
-UPSTASH_URL = "https://casual-crayfish-21486.upstash.io"
-UPSTASH_TOKEN = "AVPuAAIncDFiNWEyN2ExYmEzZGU0N2I5ODlkNmUxMjRkM2UzNWMwY3AxMjE0ODY"
+UPSTASH_URL = os.environ.get("UPSTASH_URL")
+UPSTASH_TOKEN = os.environ.get("UPSTASH_TOKEN")
 
-
+class FatigueDB:
+    def __init__(self, url: str = None, token: str = None):
+        _url = url or UPSTASH_URL
+        _token = token or UPSTASH_TOKEN
+        if not _url or not _token:
+            raise ValueError("UPSTASH_URL and UPSTASH_TOKEN required! Set env vars or pass directly.")
+        self.redis = Redis(url=_url, token=_token)
+        
 # =============================================================================
 # Data Classes
 # =============================================================================
@@ -320,15 +328,153 @@ Updated: {meta['updated']}
 # =============================================================================
 # CLI
 # =============================================================================
+def build_cli():
+    import argparse
+    
+    p = argparse.ArgumentParser(
+        description='FatigueData-AM2022 Redis API - δ理論検証用'
+    )
+    sub = p.add_subparsers(dest='cmd', required=True)
+    
+    # list
+    sp_list = sub.add_parser('list', help='材料一覧')
+    sp_list.add_argument('--top', type=int, default=20)
+    sp_list.add_argument('--sort', choices=['sn_count', 'name'], default='sn_count')
+    
+    # search
+    sp_search = sub.add_parser('search', help='材料検索')
+    sp_search.add_argument('query', help='検索クエリ (例: Ti, 316, Al)')
+    
+    # info
+    sp_info = sub.add_parser('info', help='材料詳細')
+    sp_info.add_argument('material', help='材料名')
+    
+    # get-sn
+    sp_sn = sub.add_parser('get-sn', help='S-Nデータ取得')
+    sp_sn.add_argument('material', help='材料名')
+    sp_sn.add_argument('--R', type=float, default=None, help='応力比フィルタ')
+    sp_sn.add_argument('--with-sigma-y', action='store_true', help='σ_yありのみ')
+    sp_sn.add_argument('--output', '-o', help='CSV出力ファイル')
+    sp_sn.add_argument('--limit', type=int, default=20, help='表示件数')
+    
+    # delta
+    sp_delta = sub.add_parser('delta', help='δ理論検証用データ (r計算済み)')
+    sp_delta.add_argument('material', help='材料名')
+    sp_delta.add_argument('--R', type=float, default=-1.0)
+    sp_delta.add_argument('--output', '-o', help='CSV出力ファイル')
+    
+    # summary
+    sub.add_parser('summary', help='DB全体サマリー')
+    
+    return p
+
+
+def cmd_list(db, args):
+    print(f"\n📦 材料一覧 (top {args.top}, sort={args.sort}):")
+    print("-" * 70)
+    print(f"{'Material':<25} {'S-N':>8} {'ε-N':>8} {'σ_y range':>20}")
+    print("-" * 70)
+    for mat in db.list_materials(sort_by=args.sort)[:args.top]:
+        sy_min = mat.get('sigma_y_min', '-')
+        sy_max = mat.get('sigma_y_max', '-')
+        sy_range = f"{sy_min}-{sy_max}" if sy_min != '-' else '-'
+        print(f"{mat['name']:<25} {mat['sn_count']:>8} {mat['en_count']:>8} {sy_range:>20}")
+
+
+def cmd_search(db, args):
+    results = db.search_materials(args.query)
+    print(f"\n🔍 検索: '{args.query}' → {len(results)}件")
+    for name in results:
+        info = db.get_material_info(name)
+        print(f"   {name}: S-N={info['sn_count']}, σ_y={info.get('sigma_y_min')}-{info.get('sigma_y_max')} MPa")
+
+
+def cmd_info(db, args):
+    info = db.get_material_info(args.material)
+    if not info:
+        print(f"❌ Material '{args.material}' not found")
+        return
+    
+    print(f"\n📋 {args.material}")
+    print("=" * 50)
+    print(f"  S-N points:    {info['sn_count']}")
+    print(f"  ε-N points:    {info['en_count']}")
+    print(f"  da/dN points:  {info['dadn_count']}")
+    print(f"  σ_y range:     {info.get('sigma_y_min')} - {info.get('sigma_y_max')} MPa")
+    
+    # R値の分布
+    sn_data = db.get_sn(args.material)
+    R_values = set(d.get('R') for d in sn_data if d.get('R') is not None)
+    print(f"  R values:      {sorted(R_values)}")
+
+
+def cmd_get_sn(db, args):
+    data = db.get_sn(args.material, R=args.R, with_sigma_y=args.with_sigma_y)
+    
+    print(f"\n📊 {args.material} S-N data")
+    if args.R is not None:
+        print(f"   R = {args.R}")
+    if args.with_sigma_y:
+        print(f"   (σ_y required)")
+    print(f"   Total: {len(data)} points")
+    print("-" * 70)
+    
+    if args.output:
+        import csv
+        with open(args.output, 'w', newline='') as f:
+            w = csv.DictWriter(f, fieldnames=['N', 'S', 'R', 'sigma_y', 'sigma_uts', 'runout', 'doi'])
+            w.writeheader()
+            w.writerows(data)
+        print(f"✅ Saved to {args.output}")
+    else:
+        print(f"{'N':>12} {'S [MPa]':>10} {'R':>6} {'σ_y':>10} {'runout':>8}")
+        print("-" * 50)
+        for d in data[:args.limit]:
+            print(f"{d['N']:>12.0f} {d['S']:>10.1f} {d.get('R', '-'):>6} {d.get('sigma_y', '-'):>10} {d.get('runout', 0):>8}")
+        if len(data) > args.limit:
+            print(f"   ... and {len(data) - args.limit} more (use --output for full data)")
+
+
+def cmd_delta(db, args):
+    data = db.get_sn_for_delta(args.material, R=args.R)
+    
+    print(f"\n🔬 {args.material} δ-theory data (R={args.R})")
+    print(f"   Total: {len(data)} points with σ_y")
+    if data:
+        print(f"   r range: {min(d['r'] for d in data):.4f} - {max(d['r'] for d in data):.4f}")
+    print("-" * 70)
+    
+    if args.output:
+        import csv
+        with open(args.output, 'w', newline='') as f:
+            w = csv.DictWriter(f, fieldnames=['N', 'S', 'sigma_y', 'r', 'runout', 'doi'])
+            w.writeheader()
+            w.writerows(data)
+        print(f"✅ Saved to {args.output}")
+    else:
+        print(f"{'N':>12} {'S [MPa]':>10} {'σ_y [MPa]':>12} {'r':>10} {'runout':>8}")
+        print("-" * 60)
+        for d in data[:20]:
+            print(f"{d['N']:>12.0f} {d['S']:>10.1f} {d['sigma_y']:>12.1f} {d['r']:>10.4f} {d.get('runout', 0):>8}")
+        if len(data) > 20:
+            print(f"   ... and {len(data) - 20} more")
+
+
 if __name__ == '__main__':
+    parser = build_cli()
+    args = parser.parse_args()
+    
     db = FatigueDB()
-    print(db.summary())
     
-    print("\n📦 Top 5 materials by S-N count:")
-    for mat in db.list_materials()[:5]:
-        print(f"   {mat['name']}: {mat['sn_count']} S-N, σ_y={mat.get('sigma_y_min')}-{mat.get('sigma_y_max')} MPa")
-    
-    print("\n🔍 Ti-6Al-4V S-N (R=-1, with σ_y):")
-    ti64 = db.get_sn_for_delta('Ti-6Al-4V', R=-1.0)
-    print(f"   {len(ti64)} points")
-    print(f"   r range: {min(d['r'] for d in ti64):.4f} - {max(d['r'] for d in ti64):.4f}")
+    if args.cmd == 'summary':
+        print(db.summary())
+    elif args.cmd == 'list':
+        cmd_list(db, args)
+    elif args.cmd == 'search':
+        cmd_search(db, args)
+    elif args.cmd == 'info':
+        cmd_info(db, args)
+    elif args.cmd == 'get-sn':
+        cmd_get_sn(db, args)
+    elif args.cmd == 'delta':
+        cmd_delta(db, args)
