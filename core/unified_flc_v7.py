@@ -29,17 +29,26 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional, Tuple, Union
 import numpy as np
 
-# Try to import from v6.9b
+# Try to import from v6.9
 try:
-    from unified_yield_fatigue_v6_9b_tau_classes__2_ import (
+    from .unified_yield_fatigue_v6_9 import (
         Material, MATERIALS, 
         T_TWIN, R_COMP,
         sigma_base_delta,
     )
     V69_AVAILABLE = True
 except ImportError:
-    V69_AVAILABLE = False
-    warnings.warn("v6.9b not found. Using built-in material database.")
+    try:
+        # Standalone mode (not as package)
+        from unified_yield_fatigue_v6_9 import (
+            Material, MATERIALS, 
+            T_TWIN, R_COMP,
+            sigma_base_delta,
+        )
+        V69_AVAILABLE = True
+    except ImportError:
+        V69_AVAILABLE = False
+        warnings.warn("v6.9 not found. Using built-in material database.")
 
 
 # ==============================================================================
