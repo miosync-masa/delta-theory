@@ -5,9 +5,10 @@
 **"Nature is Geometry"** — Predicting material properties from geometric first principles
 
 [![Tests](https://github.com/miosync/delta-theory/actions/workflows/tests.yml/badge.svg)](https://github.com/miosync/delta-theory/actions/workflows/tests.yml)
+[![PyPI](https://img.shields.io/pypi/v/delta-theory.svg)](https://pypi.org/project/delta-theory/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-6.9b-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-8.0.0-green.svg)](CHANGELOG.md)
 [![codecov](https://codecov.io/gh/miosync/delta-theory/branch/main/graph/badge.svg)](https://codecov.io/gh/miosync/delta-theory)
 
 </div>
@@ -26,32 +27,107 @@ $$\Lambda = \frac{K}{|V|_{\text{eff}}}$$
 - **|V|_eff**: Effective cohesive energy density (bond strength)
 - **Λ = 1**: Critical condition (fracture / phase transition)
 
+### What Can δ-Theory Predict?
+
+| Module | Predicts | Key Parameters | Accuracy |
+|--------|----------|----------------|----------|
+| **v5.0** | Yield stress σ_y | f_d, E_bond, crystal geometry | 2.6% |
+| **v6.10** | Fatigue life N | r_th (BCC=0.65, FCC=0.02, HCP=0.20) | 4-7% |
+| **v7.2** | Forming Limit Curve FLC(β) | Free volume consumption | 2.7% |
+| **v8.0** | Post-forming fatigue life | η_forming → r_th_eff | — |
+| **DBT** | Ductile-Brittle Transition | Grain size, segregation | — |
+
+---
+
+## 📦 Installation
+
+```bash
+pip install delta-theory
+```
+
+### From Source
+
+```bash
+git clone https://github.com/miosync/delta-theory.git
+cd delta-theory
+pip install -e .
+```
+
+---
+
+## 🚀 Quick Start
+
+### Yield Stress
+
+```python
+from core import calc_sigma_y, MATERIALS
+
+mat = MATERIALS['Fe']
+result = calc_sigma_y(mat, T_K=300)
+print(f"σ_y = {result['sigma_y']:.1f} MPa")
+```
+
+### Fatigue Life
+
+```python
+from core import fatigue_life_const_amp, MATERIALS
+
+result = fatigue_life_const_amp(
+    MATERIALS['Fe'],
+    sigma_a_MPa=150,
+    sigma_y_tension_MPa=200,
+)
+print(f"N_fail = {result['N_fail']:.2e} cycles")
+```
+
+### FLC Prediction (NEW in v8.0!)
+
+```python
+from core import FLCPredictor
+
+flc = FLCPredictor()
+for beta in [-0.5, 0.0, 1.0]:
+    Em = flc.predict(beta, 'SPCC')
+    print(f"β={beta:+.1f}: FLC = {Em:.3f}")
+```
+
+### Forming-Fatigue Integration (NEW in v8.0!)
+
+```python
+from core import FormingFatigueIntegrator
+
+integrator = FormingFatigueIntegrator()
+
+# After 40% free volume consumption from forming:
+r_th_eff = integrator.effective_r_th(eta_forming=0.40, structure='BCC')
+print(f"r_th: 0.65 → {r_th_eff:.3f}")  # Fatigue threshold drops!
+```
+
 ---
 
 ## 📦 Repository Structure
 
 ```
 delta-theory/
-├── core/                           # 🔧 Main modules
-│   ├── unified_yield_fatigue_v6_9.py  # ★ Unified yield + fatigue model
-│   ├── dbt_unified.py                  # ★ DBT/DBTT prediction model
-│   └── materials.py                    # Materials database
+├── core/                              # 🔧 Main modules
+│   ├── unified_yield_fatigue_v6_9.py     # Unified yield + fatigue model
+│   ├── unified_flc_v7.py                 # ★ FLC + Forming-Fatigue (NEW!)
+│   ├── dbt_unified.py                    # DBT/DBTT prediction model
+│   ├── materials.py                      # Materials database
+│   └── fatigue_redis_api.py              # FatigueData-AM2022 API
 │
-├── apps/                           # 🖥️ Applications
-│   └── delta_fatigue_app.py           # Streamlit Web App
+├── apps/                              # 🖥️ Applications
+│   └── delta_fatigue_app.py              # Streamlit Web App
 │
-├── validation/                     # 📊 Validation tools
-│   └── fatigue_redis_api.py           # FatigueData-AM2022 API
-│
-├── examples/                       # 📚 Usage examples
-└── tests/                          # 🧪 Tests
+├── examples/                          # 📚 Usage examples
+└── tests/                             # 🧪 Tests
 ```
 
 ---
 
 ## 🔬 Core Modules
 
-### 1. unified_yield_fatigue_v6_9.py (Main)
+### 1. unified_yield_fatigue_v6_9.py
 
 **Unified v5.0 yield stress + v6.8 fatigue damage model**
 
@@ -66,7 +142,7 @@ $$\sigma_y = \sigma_{\text{base}}(\delta) + \Delta\sigma_{\text{ss}}(c) + \Delta
 | Δσ_ρ | Work hardening (Taylor) | 4-7% |
 | Δσ_ppt | Precipitation strengthening (auto-switch) | Cutting/Orowan |
 
-#### Fatigue Model (v6.8)
+#### Fatigue Model (v6.10)
 
 $$\frac{dD}{dN} = \begin{cases} 0 & (r \leq r_{th}) \\ A_{\text{eff}} \cdot (r - r_{th})^n & (r > r_{th}) \end{cases}$$
 
@@ -78,27 +154,85 @@ $$\frac{dD}{dN} = \begin{cases} 0 & (r \leq r_{th}) \\ A_{\text{eff}} \cdot (r -
 | FCC | 0.02 | 7 | ❌ None | Cu, Al, Ni |
 | HCP | 0.20 | 9 | △ Intermediate | Ti, Mg, Zn |
 
-#### Usage
+---
 
-```python
-from core import calc_sigma_y, fatigue_life_const_amp, MATERIALS
+### 2. unified_flc_v7.py (NEW in v8.0!)
 
-# Yield stress calculation
-mat = MATERIALS['Fe']
-y = calc_sigma_y(mat, T_K=300, c_wt_percent=0.1, k_ss=400, solute_type='interstitial')
-print(f"σ_y = {y['sigma_y']:.1f} MPa")
+**FLC Prediction + Forming-Fatigue Integration**
 
-# Fatigue life prediction
-result = fatigue_life_const_amp(
-    mat,
-    sigma_a_MPa=150,
-    sigma_y_tension_MPa=y['sigma_y'],
-    A_ext=2.46e-4,
-)
-print(f"N_fail = {result['N_fail']:.2e} cycles")
+#### FLC Model (v7.2)
+
+$$\text{FLC}(\beta) = \text{FLC}_0^{\text{pure}} \times (1 - \eta_{\text{total}}) \times h(\beta, R, \tau/\sigma)$$
+
+| Parameter | Description |
+|-----------|-------------|
+| FLC₀_pure | Pure metal formability from δ-theory |
+| η_total | Free volume consumed by strengthening mechanisms |
+| h(β) | V-shape factor from multiaxial stress state |
+| R | Compression/tension ratio (twin effect for HCP) |
+| τ/σ | Shear/tension ratio |
+
+**Free Volume Consumption:**
+
+```
+η_total = η_ss + η_ppt + η_wh + η_HP
+        = k_ss×C_ss + k_ppt×f_ppt + k_wh×log(ρ/ρ_ref) + k_HP×(√(d_ref/d)-1)
 ```
 
-#### CLI
+**Why SPCC vs DP590 have different FLC:**
+
+| Material | Free Volume Remaining | FLC₀ |
+|----------|----------------------|------|
+| SPCC | 90.6% | 0.25 |
+| DP590 | 71.4% | 0.20 |
+
+#### Forming-Fatigue Integration (v8.0)
+
+**Revolutionary insight:** Forming consumes free volume → Less available for fatigue!
+
+$$r_{th}^{\text{eff}} = r_{th}^{\text{virgin}} \times (1 - \eta_{\text{forming}})$$
+
+| η_forming | r_th_eff (BCC) | Implication |
+|-----------|----------------|-------------|
+| 0% | 0.65 | Virgin material |
+| 20% | 0.52 | Some forming |
+| 40% | 0.39 | Heavy forming |
+| 60% | 0.26 | Severe forming |
+
+**Critical η:** The forming level where "infinite life" becomes "finite life"
+
+```python
+from core import critical_forming_consumption
+
+eta_crit = critical_forming_consumption(r_applied=0.50, structure='BCC')
+print(f"η_critical = {eta_crit*100:.1f}%")  # → 23.1%
+```
+
+---
+
+### 3. dbt_unified.py
+
+**Unified Ductile-Brittle Transition Temperature (DBTT) Prediction Model**
+
+| View | Fixed Axis | Solve For | Use Case |
+|------|------------|-----------|----------|
+| View 1 | Temperature T | Grain size d* | Ductile window detection |
+| View 2 | Grain size d | Temperature T* | DBTT prediction |
+| View 3 | d, T | Time t | Segregation evolution |
+
+```python
+from core import DBTUnified
+
+model = DBTUnified()
+result = model.temp_view.find_DBTT(d=30e-6, c=0.005)
+print(f"DBTT = {result['T_star']:.0f} K")
+```
+
+---
+
+## ⌨️ CLI Reference
+
+### Yield & Fatigue
 
 ```bash
 # Single point calculation
@@ -111,47 +245,39 @@ python -m core.unified_yield_fatigue_v6_9 sn --metal Fe --sigma_min 100 --sigma_
 python -m core.unified_yield_fatigue_v6_9 calibrate --metal Fe --sigma_a 244 --N_fail 7.25e7
 ```
 
----
+### FLC (NEW!)
 
-### 2. dbt_unified.py
+```bash
+# Single material FLC
+python3 -c "
+from core import FLCPredictor
+flc = FLCPredictor()
+for b in [-0.5, -0.25, 0, 0.25, 0.5, 1.0]:
+    print(f'β={b:+.2f}: {flc.predict(b, \"SPCC\"):.3f}')
+"
 
-**Unified Ductile-Brittle Transition Temperature (DBTT) Prediction Model**
+# Quick FLC value
+python3 -c "from core import predict_flc; print(predict_flc('SPCC', 0.0))"
 
-Solves the same physical model σ_y(d,T) = σ_f(d,c,T) from three perspectives:
+# Forming-fatigue analysis
+python3 -c "
+from core import FormingFatigueIntegrator
+integrator = FormingFatigueIntegrator()
+for eta in [0.0, 0.2, 0.4, 0.6]:
+    r_th = integrator.effective_r_th(eta, 'BCC')
+    print(f'η={eta:.0%}: r_th_eff = {r_th:.3f}')
+"
 
-| View | Fixed Axis | Solve For | Use Case |
-|------|------------|-----------|----------|
-| View 1 | Temperature T | Grain size d* | Ductile window detection |
-| View 2 | Grain size d | Temperature T* | DBTT prediction |
-| View 3 | d, T | Time t | Segregation evolution |
-
-#### Core Physics
-
-- **McLean Isotherm**: θ(c, T) — Grain boundary coverage
-- **Embrittlement Function**: g_seg(θ) — Percolation-like onset
-- **Hall-Petch**: R(d) = 1 + β/√d
-
-#### Usage
-
-```python
-from core import DBTUnified
-
-model = DBTUnified()
-
-# Single point calculation
-summary = model.summary(d=30e-6, c=0.005, T=300)
-print(f"Mode: {summary['mode']}")
-
-# Find DBTT
-result = model.temp_view.find_DBTT(d=30e-6, c=0.005)
-print(f"DBTT = {result['T_star']:.0f} K")
-
-# Ductile window analysis
-window = model.grain_view.classify_mode(T=300, c=0.005)
-print(window['msg'])
+# Critical η calculation
+python3 -c "
+from core import critical_forming_consumption
+for r in [0.3, 0.4, 0.5, 0.6]:
+    eta = critical_forming_consumption(r, 'BCC')
+    print(f'r={r:.1f}: η_critical = {eta*100:.1f}%')
+"
 ```
 
-#### CLI
+### DBT
 
 ```bash
 # Single point calculation
@@ -162,9 +288,6 @@ python -m core.dbt_unified T_axis --d 30 --c 0.5
 
 # Grain size axis analysis (ductile window)
 python -m core.dbt_unified d_axis --T 300 --c 0.5 --find_c_crit
-
-# DBTT table
-python -m core.dbt_unified table --d_list 5,10,20,50 --c_list 0,0.2,0.5,1.0
 ```
 
 ---
@@ -176,7 +299,7 @@ python -m core.dbt_unified table --d_list 5,10,20,50 --c_list 0,0.2,0.5,1.0
 Instant access to 1.49M fatigue data points:
 
 ```python
-from validation import FatigueDB
+from core import FatigueDB
 
 db = FatigueDB()
 ti64 = db.get_sn_for_delta('Ti-6Al-4V', R=-1.0)
@@ -210,44 +333,6 @@ Features:
 
 ---
 
-## ⚙️ Installation
-
-```bash
-git clone https://github.com/miosync/delta-theory.git
-cd delta-theory
-pip install -e .
-```
-
-### Optional Dependencies
-
-```bash
-# Full installation
-pip install -e ".[all]"
-
-# Development tools
-pip install -e ".[dev]"
-
-# Analysis (scipy, pandas, matplotlib)
-pip install -e ".[analysis]"
-
-# Validation API
-pip install -e ".[validation]"
-
-# Streamlit app
-pip install -e ".[app]"
-```
-
-### Requirements
-
-- Python >= 3.9
-- numpy
-- scipy (for dbt_unified segregation fitting)
-- upstash-redis (for validation API)
-- streamlit (for web app)
-- matplotlib, pandas (for visualization)
-
----
-
 ## 🧪 Testing
 
 ```bash
@@ -266,13 +351,18 @@ pytest tests/ -v
 
 1. **Materials = Highly Viscous Fluids** — Deformation is "flow", not "fracture"
 2. **Fatigue Limits = Geometric Consequence of Crystal Structure** — BCC/FCC/HCP differences emerge naturally
-3. **Fitting Parameters = 0.5** — Only A_ext one-point calibration required
+3. **Free Volume = Shared Resource** — Strength, ductility, and fatigue compete for the same "余白"
+4. **Fitting Parameters ≈ 0** — Derived from crystal geometry, not curve fitting
 
-### Related Work
+### Version History
 
-- H-CSP (Hierarchical Constraint Satisfaction Problem) Theory
-- Λ³/EDR Framework
-- Connection to Yang-Mills Mass Gap
+| Version | Feature |
+|---------|---------|
+| v5.0 | Yield stress from δ-theory |
+| v6.9b | Unified yield + fatigue with multiaxial |
+| v6.10 | Universal fatigue validation (2472 points) |
+| v7.2 | FLC from free volume consumption |
+| **v8.0** | **Forming-Fatigue integration** |
 
 ---
 
@@ -294,12 +384,13 @@ Data sources (FatigueData-AM2022): CC BY 4.0
 ## 📚 Citation
 
 ```bibtex
-@software{delta_theory_2026,
+@software{delta_theory_2025,
   author = {Iizumi, Masamichi and Tamaki},
-  title = {δ-Theory: Unified Materials Strength and Fatigue Framework},
-  version = {6.9b},
-  year = {2026},
-  url = {https://github.com/miosync/delta-theory}
+  title = {δ-Theory: Unified Materials Strength, Fatigue, and Forming Framework},
+  version = {8.0.0},
+  year = {2025},
+  url = {https://github.com/miosync/delta-theory},
+  doi = {10.5281/zenodo.18457897}
 }
 ```
 
@@ -309,285 +400,6 @@ Data sources (FatigueData-AM2022): CC BY 4.0
 
 **"Nature is Geometry"** 🔬
 
-</div>
-
----
-#Japanese
-
-## 🎯 Overview
-
-δ理論は、**結晶構造の幾何学**から材料特性を予測する統一フレームワークです。従来の経験的フィッティングに頼る手法とは異なり、物理的第一原理から材料挙動を導出します。
-
-### Core Equation (核心方程式)
-
-$$\Lambda = \frac{K}{|V|_{\text{eff}}}$$
-
-- **K**: 破壊駆動エネルギー密度（応力、熱、電磁場など）
-- **|V|_eff**: 有効凝集エネルギー密度（結合強度）
-- **Λ = 1**: 臨界条件（破壊・相転移）
-
----
-
-## 📦 Repository Structure
-
-```
-delta-theory/
-├── core/                           # 🔧 メインモジュール
-│   ├── unified_yield_fatigue_v6_9.py  # ★ 統一降伏＋疲労モデル
-│   ├── dbt_unified.py                  # ★ DBT/DBTT予測モデル
-│   └── materials.py                    # 材料データベース
-│
-├── apps/                           # 🖥️ アプリケーション
-│   └── delta_fatigue_app.py           # Streamlit Web App
-│
-├── validation/                     # 📊 検証ツール
-│   └── fatigue_redis_api.py           # FatigueData-AM2022 API
-│
-├── examples/                       # 📚 使用例
-└── tests/                          # 🧪 テスト
-```
-
----
-
-## 🔬 Core Modules
-
-### 1. unified_yield_fatigue_v6_9.py（メイン）
-
-**v5.0 降伏応力 + v6.8 疲労損傷の統一モデル**
-
-#### Yield Model (v5.0)
-
-$$\sigma_y = \sigma_{\text{base}}(\delta) + \Delta\sigma_{\text{ss}}(c) + \Delta\sigma_\rho(\varepsilon) + \Delta\sigma_{\text{ppt}}(r, f)$$
-
-| 成分 | 説明 | 精度 |
-|------|------|------|
-| σ_base | δ理論ベース強度 | 純金属 2.6% |
-| Δσ_ss | 固溶強化 | 1-2% |
-| Δσ_ρ | 加工硬化（Taylor） | 4-7% |
-| Δσ_ppt | 析出強化（自動切替） | Cutting/Orowan |
-
-#### Fatigue Model (v6.8)
-
-$$\frac{dD}{dN} = \begin{cases} 0 & (r \leq r_{th}) \\ A_{\text{eff}} \cdot (r - r_{th})^n & (r > r_{th}) \end{cases}$$
-
-**構造プリセット（フィッティングなし）:**
-
-| 構造 | r_th | n | 疲労限度 | 代表材料 |
-|------|------|---|----------|----------|
-| BCC | 0.65 | 10 | ✅ 明確 | Fe, W, Mo |
-| FCC | 0.02 | 7 | ❌ なし | Cu, Al, Ni |
-| HCP | 0.20 | 9 | △ 中間 | Ti, Mg, Zn |
-
-#### Usage
-
-```python
-from core import calc_sigma_y, fatigue_life_const_amp, MATERIALS
-
-# 降伏応力計算
-mat = MATERIALS['Fe']
-y = calc_sigma_y(mat, T_K=300, c_wt_percent=0.1, k_ss=400, solute_type='interstitial')
-print(f"σ_y = {y['sigma_y']:.1f} MPa")
-
-# 疲労寿命予測
-result = fatigue_life_const_amp(
-    mat,
-    sigma_a_MPa=150,
-    sigma_y_tension_MPa=y['sigma_y'],
-    A_ext=2.46e-4,
-)
-print(f"N_fail = {result['N_fail']:.2e} cycles")
-```
-
-#### CLI
-
-```bash
-# 単点計算
-python -m core.unified_yield_fatigue_v6_9 point --metal Fe --sigma_a 150
-
-# S-N曲線生成
-python -m core.unified_yield_fatigue_v6_9 sn --metal Fe --sigma_min 100 --sigma_max 300
-
-# A_ext校正
-python -m core.unified_yield_fatigue_v6_9 calibrate --metal Fe --sigma_a 244 --N_fail 7.25e7
-```
-
----
-
-### 2. dbt_unified.py
-
-**延性-脆性遷移温度（DBTT）予測の統一モデル**
-
-同一物理モデル σ_y(d,T) = σ_f(d,c,T) を3つの視点から解く：
-
-| View | 固定軸 | 求める軸 | 用途 |
-|------|--------|----------|------|
-| View 1 | 温度T | 粒径d* | 延性窓の検出 |
-| View 2 | 粒径d | 温度T* | DBTT予測 |
-| View 3 | d, T | 時間t | 偏析発展 |
-
-#### Core Physics
-
-- **McLean等温線**: θ(c, T) — 粒界被覆率
-- **脆化関数**: g_seg(θ) — パーコレーション的onset
-- **Hall-Petch**: R(d) = 1 + β/√d
-
-#### Usage
-
-```python
-from core import DBTUnified
-
-model = DBTUnified()
-
-# 単点計算
-summary = model.summary(d=30e-6, c=0.005, T=300)
-print(f"Mode: {summary['mode']}")
-
-# DBTT探索
-result = model.temp_view.find_DBTT(d=30e-6, c=0.005)
-print(f"DBTT = {result['T_star']:.0f} K")
-
-# 延性窓解析
-window = model.grain_view.classify_mode(T=300, c=0.005)
-print(window['msg'])
-```
-
-#### CLI
-
-```bash
-# 単点計算
-python -m core.dbt_unified point --d 30 --c 0.5 --T 300
-
-# 温度軸解析（DBTT）
-python -m core.dbt_unified T_axis --d 30 --c 0.5
-
-# 粒径軸解析（延性窓）
-python -m core.dbt_unified d_axis --T 300 --c 0.5 --find_c_crit
-
-# DBTTテーブル
-python -m core.dbt_unified table --d_list 5,10,20,50 --c_list 0,0.2,0.5,1.0
-```
-
----
-
-## 📊 Validation Data
-
-### FatigueData-AM2022 (Upstash Redis)
-
-1.49M点の疲労データに即時アクセス可能：
-
-```python
-from validation import FatigueDB
-
-db = FatigueDB()
-ti64 = db.get_sn_for_delta('Ti-6Al-4V', R=-1.0)
-
-# δ理論検証
-for point in ti64:
-    r = point['r']  # = σ_a / σ_y
-    if r <= 0.20:  # HCP r_th
-        assert point['runout'], "Should be runout below r_th"
-```
-
-**データ規模:**
-- 116 材料
-- S-N: 15,146 点
-- ε-N: 1,840 点  
-- da/dN: 1,472,923 点
-
----
-
-## 🖥️ Web Application
-
-```bash
-cd apps
-streamlit run delta_fatigue_app.py
-```
-
-Features:
-- 📈 S-N曲線予測（複数材料比較）
-- 🎯 A_ext 1点校正
-- 📚 理論説明
-
----
-
-## ⚙️ Installation
-
-```bash
-git clone https://github.com/yourusername/delta-theory.git
-cd delta-theory
-pip install -r requirements.txt
-```
-
-### Requirements
-
-- Python >= 3.9
-- numpy
-- scipy (for dbt_unified segregation fitting)
-- upstash-redis (for validation API)
-- streamlit (for web app)
-- matplotlib, pandas (for visualization)
-
----
-
-## 🧪 Testing
-
-```bash
-pytest tests/ -v
-```
-
----
-
-## 📖 Theory Background
-
-### Why "δ-Theory"?
-
-**δ_L (Lindemann Parameter)** — 融点における原子変位の臨界比率。この純粋に幾何学的なパラメータが、材料強度から疲労限度まで統一的に説明する。
-
-### Key Insights
-
-1. **材料 = 高粘性流体** — 変形は「破壊」ではなく「流動」
-2. **疲労限度 = 結晶構造の幾何的帰結** — BCC/FCC/HCPの違いが自然に現れる
-3. **フィッティングパラメータ = 0.5個** — A_extの1点校正のみ
-
-### Related Work
-
-- H-CSP（階層CSP）理論
-- Λ³/EDR フレームワーク
-- Yang-Mills 質量ギャップとの接続
-
----
-
-## 📄 License
-
-MIT License (Code) — See [LICENSE](LICENSE)
-
-Data sources (FatigueData-AM2022): CC BY 4.0
-
----
-
-## 👥 Authors
-
-- **飯泉真道 (Masamichi Iizumi)** — Miosync, Inc. CEO
-- **環 (Tamaki)** — Sentient Digital Partner
-
----
-
-## 📚 Citation
-
-```bibtex
-@software{delta_theory_2026,
-  author = {Iizumi, Masamichi and Tamaki},
-  title = {δ-Theory: Unified Materials Strength and Fatigue Framework},
-  version = {6.9b},
-  year = {2026},
-  url = {https://github.com/yourusername/delta-theory}
-}
-```
-
----
-
-<div align="center">
-
-**"Nature is Geometry"** 🔬
+*From yield stress to fatigue life to forming limits — all from crystal structure*
 
 </div>
