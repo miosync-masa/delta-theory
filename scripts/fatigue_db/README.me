@@ -1,0 +1,154 @@
+# FatigueData-AM2022 → Upstash Redis セットアップ
+
+δ理論検証用の疲労データベース（FatigueData-AM2022）をUpstash Redisに格納するためのスクリプト。
+
+## 📊 データソース
+
+| 項目 | 値 |
+|------|-----|
+| **名前** | FatigueData-AM2022 |
+| **内容** | 積層造形合金の疲労データベース |
+| **論文DOI** | [10.1038/s41597-023-02150-x](https://doi.org/10.1038/s41597-023-02150-x) |
+| **Figshare DOI** | [10.6084/m9.figshare.22337629](https://doi.org/10.6084/m9.figshare.22337629) |
+| **ライセンス** | CC BY 4.0 |
+
+### データ内容
+
+| タイプ | データ点数 | 説明 |
+|--------|-----------|------|
+| **S-N** | ~15,000 | 応力-寿命データ（σ_a vs N_f） |
+| **ε-N** | ~1,800 | ひずみ-寿命データ（ε_a vs N_f） |
+| **da/dN** | ~1,470,000 | き裂進展データ（da/dN vs ΔK） |
+
+### 主要材料
+
+| 材料 | 構造 | S-Nデータ数 | σ_y範囲 [MPa] |
+|------|------|------------|---------------|
+| Ti-6Al-4V | HCP | ~5,400 | 514 - 1,213 |
+| AlSi10Mg | FCC | ~1,800 | 115 - 319 |
+| IN718 | FCC | ~1,800 | 420 - 1,379 |
+| 316L | FCC | ~1,600 | 145 - 640 |
+
+## 🚀 セットアップ手順
+
+### 1. 元データのダウンロード
+
+```bash
+# Figshareから直接ダウンロード（約67MB）
+curl -L -o FatigueData-AM2022.json "https://ndownloader.figshare.com/files/41023481"
+```
+
+または Figshare API 経由:
+
+```bash
+curl -s "https://api.figshare.com/v2/articles/22337629" | \
+  python3 -c "import json,sys; d=json.load(sys.stdin); print(d['files'][0]['download_url'])"
+```
+
+### 2. Upstash Redis の準備
+
+1. [Upstash](https://upstash.com/) でアカウント作成
+2. 新しい Redis データベースを作成
+3. `REST URL` と `REST Token` をコピー
+
+### 3. 環境変数の設定
+
+```bash
+export UPSTASH_URL="https://your-redis-xxxxx.upstash.io"
+export UPSTASH_TOKEN="AXxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+または `.env` ファイル:
+
+```bash
+# .env
+UPSTASH_URL=https://your-redis-xxxxx.upstash.io
+UPSTASH_TOKEN=AXxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### 4. 依存関係のインストール
+
+```bash
+pip install upstash-redis
+```
+
+### 5. アップロード実行
+
+```bash
+python upload_to_redis.py FatigueData-AM2022.json
+```
+
+出力例:
+```
+🔌 Connecting to Upstash Redis...
+   ✓ Connected!
+📂 Loading FatigueData-AM2022.json...
+   191 articles found
+📤 Uploading to Upstash Redis...
+   ✓ fatigue:sn:Ti-6Al-4V (5438 points)
+   ✓ fatigue:sn:AlSi10Mg (1793 points)
+   ...
+
+============================================================
+✅ COMPLETE!
+============================================================
+   Materials:    116
+   S-N points:   15,146
+   ε-N points:   1,840
+   da/dN points: 1,472,923
+   TOTAL:        1,489,909
+```
+
+## 📦 Redis キー構造
+
+```
+fatigue:meta                    # メタ情報（JSON）
+fatigue:materials               # 材料サマリー一覧（JSON）
+fatigue:sn:<material_name>      # S-Nデータ（JSON配列）
+fatigue:en:<material_name>      # ε-Nデータ（JSON配列）
+fatigue:dadn:<material_name>    # da/dNデータ（JSON配列）
+fatigue:dadn:<material_name>:N  # da/dNデータ（分割時）
+```
+
+### S-Nデータ形式
+
+```json
+{
+  "N": 14289,
+  "S": 403.2,
+  "runout": 0,
+  "R": -1.0,
+  "sigma_y": 926.0,
+  "sigma_uts": 1020.0,
+  "doi": "10.1016/j.ijfatigue.2020.105898"
+}
+```
+
+## 🔍 APIでの利用
+
+アップロード完了後は `fatigue_redis_api.py` で利用可能:
+
+```python
+from fatigue_redis_api import FatigueDB
+
+db = FatigueDB()
+
+# δ理論検証用データ取得（r = σ_a / σ_y 計算済み）
+ti64 = db.get_sn_for_delta('Ti-6Al-4V', R=-1.0)
+for d in ti64[:5]:
+    print(f"N={d['N']:.0f}, S={d['S']:.1f} MPa, σ_y={d['sigma_y']:.1f} MPa, r={d['r']:.4f}")
+```
+
+## ⚠️ 注意事項
+
+- Upstash無料枠: 10,000リクエスト/日、256MB
+- da/dNデータが大きいため、10MB制限を超える材料は自動分割
+- 元データのライセンス（CC BY 4.0）に従って利用すること
+
+## 📚 参考文献
+
+Peng, X., Wu, S., Qian, W. et al. The potency of defects on fatigue of additively manufactured metals. 
+*Int J Mech Sci* **221**, 107185 (2022). https://doi.org/10.1016/j.ijmecsci.2022.107185
+
+
+License: MIT
