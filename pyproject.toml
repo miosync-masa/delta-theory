@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "delta-theory"
-version = "6.9.0"
+version = "6.9.1"
 description = "Unified materials strength and fatigue prediction based on geometric first principles"
 readme = "README.md"
 license = {text = "MIT"}
