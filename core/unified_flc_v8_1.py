@@ -53,7 +53,7 @@ V69_MATERIALS = {}
 V69_Material = None
 
 try:
-    from unified_yield_fatigue_v6_9b_tau_classes import (
+    from unified_yield_fatigue_v6_9 import (
         tau_over_sigma as v69_tau_over_sigma,
         sigma_c_over_sigma_t as v69_sigma_c_over_sigma_t,
         sigma_base_delta,
@@ -69,7 +69,7 @@ try:
 except ImportError:
     try:
         # Try relative import (as package)
-        from .unified_yield_fatigue_v6_9b_tau_classes import (
+        from .unified_yield_fatigue_v6_9 import (
             tau_over_sigma as v69_tau_over_sigma,
             sigma_c_over_sigma_t as v69_sigma_c_over_sigma_t,
             sigma_base_delta,
@@ -84,16 +84,19 @@ except ImportError:
         V69_AVAILABLE = True
     except ImportError:
         warnings.warn(
-            "unified_yield_fatigue_v6_9b not found. "
+            "unified_yield_fatigue_v6_9 not found. "
             "Using built-in parameters. "
-            "For full functionality, ensure v6.9b is in the same directory."
+            "For full functionality, ensure v6.9 is in the same directory."
         )
+        V69_AVAILABLE = False
         # Fallback defaults
+        v69_tau_over_sigma = None
+        v69_sigma_c_over_sigma_t = None
+        V69_MATERIALS = {}
         C_CLASS_DEFAULT = 1.415
         DEFAULT_BCC_W110 = 0.0
         V69_T_TWIN = {}
         V69_R_COMP = {}
-
 
 # ==============================================================================
 # Built-in Parameters (Fallback when v6.9 not available)
