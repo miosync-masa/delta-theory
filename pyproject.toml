@@ -73,12 +73,12 @@ Issues = "https://github.com/miosync/delta-theory/issues"
 Changelog = "https://github.com/miosync/delta-theory/blob/main/CHANGELOG.md"
 
 [project.scripts]
-delta-yield = "core.unified_yield_fatigue_v6_9:main"
-delta-dbt = "core.dbt_unified:main"
+delta-yield = "delta_theory.unified_yield_fatigue_v6_9:main"
+delta-dbt = "delta_theory.dbt_unified:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["core*", "validation*", "apps*"]
+include = ["delta_theory*", "apps*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
