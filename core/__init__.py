@@ -109,9 +109,14 @@ except ImportError:
     FatigueDB = None  # upstash-redis not installed
 
 # ==============================================================================
+# Banners (ASCII Art)
+# ==============================================================================
+from .banners import show_banner, get_random_banner, BANNERS
+
+# ==============================================================================
 # Package Metadata
 # ==============================================================================
-__version__ = "8.0.0"
+__version__ = "8.1.1"
 __author__ = "Masamichi Iizumi & Tamaki"
 
 __all__ = [
@@ -159,6 +164,11 @@ __all__ = [
     
     # === FatigueDB (optional) ===
     "FatigueDB",
+
+     # === Banners ===
+    "show_banner",
+    "get_random_banner",
+    "BANNERS",
 ]
 
 
