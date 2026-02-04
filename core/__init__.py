@@ -11,6 +11,7 @@ Modules:
     - dbt_unified: Ductile-Brittle Transition Temperature prediction
     - materials: Material database
     - fatigue_redis_api: FatigueData-AM2022 Redis API (optional)
+    - banners: ASCII Art banners (random selection)
 
 Version History:
     v5.0   - Yield stress from δ-theory (f_d, E_bond, crystal geometry)
@@ -18,6 +19,7 @@ Version History:
     v6.10  - Universal fatigue validation (2472 points, 5 AM materials)
     v7.2   - FLC from free volume consumption
     v8.0   - Forming-Fatigue integration (η → r_th_eff)
+           - "Nature is Geometry" - m = Z × f_d (topology redefined)
 
 Example:
     >>> from delta_theory import calc_sigma_y, MATERIALS
@@ -30,7 +32,15 @@ Example:
     >>> from delta_theory import FormingFatigueIntegrator
     >>> integrator = FormingFatigueIntegrator()
     >>> r_th_eff = integrator.effective_r_th(eta_forming=0.4, structure='BCC')
+    
+    >>> from delta_theory import show_banner
+    >>> show_banner()  # Random ASCII art!
 """
+
+# ==============================================================================
+# Banners (ASCII Art) - Load first for startup display
+# ==============================================================================
+from .banners import show_banner, get_random_banner, BANNERS
 
 # ==============================================================================
 # Core: Yield + Fatigue (v6.9b)
@@ -109,17 +119,17 @@ except ImportError:
     FatigueDB = None  # upstash-redis not installed
 
 # ==============================================================================
-# Banners (ASCII Art)
-# ==============================================================================
-from .banners import show_banner, get_random_banner, BANNERS
-
-# ==============================================================================
 # Package Metadata
 # ==============================================================================
-__version__ = "8.1.1"
+__version__ = "8.1.2"
 __author__ = "Masamichi Iizumi & Tamaki"
 
 __all__ = [
+    # === Banners ===
+    "show_banner",
+    "get_random_banner",
+    "BANNERS",
+    
     # === v6.9 Yield + Fatigue ===
     "Material",
     "MATERIALS",
@@ -164,11 +174,9 @@ __all__ = [
     
     # === FatigueDB (optional) ===
     "FatigueDB",
-
-     # === Banners ===
-    "show_banner",
-    "get_random_banner",
-    "BANNERS",
+    
+    # === Info ===
+    "info",
 ]
 
 
@@ -176,23 +184,27 @@ __all__ = [
 # Quick Reference
 # ==============================================================================
 def info():
-    """Print δ-Theory library overview."""
+    """Print δ-Theory library overview with random ASCII banner."""
+    show_banner()  # 🎲 Random banner every time!
     print(f"""
 ╔══════════════════════════════════════════════════════════════════════╗
 ║  δ-Theory Core Library v{__version__}                                      ║
-║  "Nature is Geometry"                                                ║
+║  "Nature is Geometry"  ─  m = Z × f_d  ─  Λ = K/|V|_eff              ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║                                                                      ║
 ║  YIELD STRESS (v5.0)                                                 ║
 ║    σ_y = f(crystal_structure, f_d, E_bond, T)                        ║
+║    Mean error: 2.6% across 10 metals (ZERO fitting parameters)       ║
 ║    >>> calc_sigma_y(MATERIALS['Fe'])                                 ║
 ║                                                                      ║
 ║  FATIGUE LIFE (v6.10)                                                ║
 ║    N = f(r, r_th, structure)  |  r_th: BCC=0.65, FCC=0.02, HCP=0.20 ║
+║    Universal r-N normalization across AM materials                   ║
 ║    >>> fatigue_life_const_amp(sigma_a, MATERIALS['Fe'])              ║
 ║                                                                      ║
 ║  FLC - FORMING LIMIT (v7.2)                                          ║
 ║    FLC(β) = FLC₀ × (1-η) × h(β, R, τ/σ)                             ║
+║    Mean error: ~3% (geometry-based, minimal calibration)             ║
 ║    >>> FLCPredictor().predict(beta=0.0, material='SPCC')             ║
 ║                                                                      ║
 ║  FORMING-FATIGUE (v8.0)                                              ║
@@ -200,7 +212,14 @@ def info():
 ║    >>> FormingFatigueIntegrator().effective_r_th(0.4, 'BCC')         ║
 ║                                                                      ║
 ║  DBT TEMPERATURE                                                     ║
+║    3 views: Grain size / Temperature / Segregation (time)            ║
 ║    >>> DBTUnified().predict_dbtt(material, grain_size)               ║
 ║                                                                      ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  Core Principle:                                                     ║
+║    Λ = K / |V|_eff    (Λ > 1 → yield/fracture)                      ║
+║    m = Z × f_d        (topology = geometry × electron directionality)║
+║                                                                      ║
+║  Authors: Masamichi Iizumi & tamaki                                ║
 ╚══════════════════════════════════════════════════════════════════════╝
     """)
