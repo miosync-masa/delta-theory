@@ -7,7 +7,7 @@ Unified materials science prediction based on geometric first principles.
 
 Modules:
     - unified_yield_fatigue_v6_9: Main yield + fatigue model (v6.9b)
-    - unified_flc_v7: Forming Limit Curve + Forming-Fatigue Integration (v7.2/v8.0)
+    - unified_flc_v8_1: FLC prediction with v6.9 integration (v8.1)
     - dbt_unified: Ductile-Brittle Transition Temperature prediction
     - materials: Material database
     - fatigue_redis_api: FatigueData-AM2022 Redis API (optional)
@@ -19,19 +19,17 @@ Version History:
     v6.10  - Universal fatigue validation (2472 points, 5 AM materials)
     v7.2   - FLC from free volume consumption
     v8.0   - Forming-Fatigue integration (η → r_th_eff)
-           - "Nature is Geometry" - m = Z × f_d (topology redefined)
+    v8.1   - FLC 7-mode discrete formulation + v6.9 integration
+           - "Nature is Geometry" - ε₁ = |V|_eff × C_j / R_j
 
 Example:
     >>> from delta_theory import calc_sigma_y, MATERIALS
     >>> sigma_y = calc_sigma_y(MATERIALS['Fe'])
     
-    >>> from delta_theory import FLCPredictor
+    >>> from delta_theory import FLCPredictor, predict_flc
     >>> flc = FLCPredictor()
-    >>> Em = flc.predict(beta=0.0, material='SPCC')
-    
-    >>> from delta_theory import FormingFatigueIntegrator
-    >>> integrator = FormingFatigueIntegrator()
-    >>> r_th_eff = integrator.effective_r_th(eta_forming=0.4, structure='BCC')
+    >>> flc.add_from_v69('SPCC', flc0=0.225, base_element='Fe')
+    >>> eps1 = flc.predict('SPCC', 'Plane Strain')
     
     >>> from delta_theory import show_banner
     >>> show_banner()  # Random ASCII art!
@@ -64,51 +62,77 @@ from .unified_yield_fatigue_v6_9 import (
     
     # Multiaxial (τ/σ, R)
     yield_by_mode,
+    tau_over_sigma,
+    sigma_c_over_sigma_t,
     T_TWIN,
     R_COMP,
+    C_CLASS_DEFAULT,
 )
 
 # ==============================================================================
-# FLC + Forming-Fatigue (v7.2 / v8.0)
+# FLC v8.1: 7-Mode Discrete + v6.9 Integration
 # ==============================================================================
-from .unified_flc_v7 import (
-    # FLC prediction (v7.2)
+from .unified_flc_v8_1 import (
+    # Main class
     FLCPredictor,
-    FLCParams,
     FLCMaterial,
     FLC_MATERIALS,
     
-    # Forming-Fatigue integration (v8.0)
-    FormingFatigueIntegrator,
-    FormingState,
-    DeltaFormingAnalyzer,
-    
     # Convenience functions
     predict_flc,
-    effective_fatigue_threshold,
-    critical_forming_consumption,
+    predict_flc_curve,
+    get_flc0,
+    calibrate_V_eff,
+    create_material_from_v69,
+    
+    # Core functions
+    calc_R_eff,
+    calc_K_coeff,
+    predict_flc_mode,
+    
+    # v6.9 parameter helpers
+    get_tau_sigma,
+    get_R_comp,
+    get_v69_material,
     
     # Constants
+    STANDARD_MODES,
+    MODE_ORDER,
+    LOCALIZATION_COEFFS,
     R_TH_VIRGIN,
-    N_SLIP,
+    ELEMENT_STRUCTURE,
+    
+    # Flags
+    V69_AVAILABLE,
 )
 
 # ==============================================================================
 # DBT: Ductile-Brittle Transition
 # ==============================================================================
-from .dbt_unified import (
-    DBTUnified,
-    DBTCore,
-    GrainSizeView,
-    TemperatureView,
-    SegregationView,
-    MATERIAL_FE,
-)
+try:
+    from .dbt_unified import (
+        DBTUnified,
+        DBTCore,
+        GrainSizeView,
+        TemperatureView,
+        SegregationView,
+        MATERIAL_FE,
+    )
+except ImportError:
+    DBTUnified = None
+    DBTCore = None
+    GrainSizeView = None
+    TemperatureView = None
+    SegregationView = None
+    MATERIAL_FE = None
 
 # ==============================================================================
 # Materials Database (GPU-accelerated)
 # ==============================================================================
-from .materials import MaterialGPU
+try:
+    from .materials import MaterialGPU
+except ImportError:
+    MaterialGPU = None
 
 # ==============================================================================
 # Optional: FatigueDB (requires upstash-redis)
@@ -121,7 +145,7 @@ except ImportError:
 # ==============================================================================
 # Package Metadata
 # ==============================================================================
-__version__ = "8.1.2"
+__version__ = "8.1.0"
 __author__ = "Masamichi Iizumi & Tamaki"
 
 __all__ = [
@@ -141,25 +165,34 @@ __all__ = [
     "fatigue_life_const_amp",
     "generate_sn_curve",
     "yield_by_mode",
+    "tau_over_sigma",
+    "sigma_c_over_sigma_t",
     "FATIGUE_CLASS_PRESET",
     "T_TWIN",
     "R_COMP",
+    "C_CLASS_DEFAULT",
     
-    # === v7.2 FLC ===
+    # === v8.1 FLC ===
     "FLCPredictor",
-    "FLCParams",
     "FLCMaterial",
     "FLC_MATERIALS",
     "predict_flc",
+    "predict_flc_curve",
+    "get_flc0",
+    "calibrate_V_eff",
+    "create_material_from_v69",
+    "calc_R_eff",
+    "calc_K_coeff",
+    "predict_flc_mode",
+    "get_tau_sigma",
+    "get_R_comp",
+    "get_v69_material",
+    "STANDARD_MODES",
+    "MODE_ORDER",
+    "LOCALIZATION_COEFFS",
     "R_TH_VIRGIN",
-    "N_SLIP",
-    
-    # === v8.0 Forming-Fatigue ===
-    "FormingFatigueIntegrator",
-    "FormingState",
-    "DeltaFormingAnalyzer",
-    "effective_fatigue_threshold",
-    "critical_forming_consumption",
+    "ELEMENT_STRUCTURE",
+    "V69_AVAILABLE",
     
     # === DBT ===
     "DBTUnified",
@@ -189,10 +222,10 @@ def info():
     print(f"""
 ╔══════════════════════════════════════════════════════════════════════╗
 ║  δ-Theory Core Library v{__version__}                                      ║
-║  "Nature is Geometry"  ─  m = Z × f_d  ─  Λ = K/|V|_eff              ║
+║  "Nature is Geometry"  ─  ε₁ = |V|_eff × C_j / R_j                   ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║                                                                      ║
-║  YIELD STRESS (v5.0)                                                 ║
+║  YIELD STRESS (v6.9b)                                                ║
 ║    σ_y = f(crystal_structure, f_d, E_bond, T)                        ║
 ║    Mean error: 2.6% across 10 metals (ZERO fitting parameters)       ║
 ║    >>> calc_sigma_y(MATERIALS['Fe'])                                 ║
@@ -202,24 +235,26 @@ def info():
 ║    Universal r-N normalization across AM materials                   ║
 ║    >>> fatigue_life_const_amp(sigma_a, MATERIALS['Fe'])              ║
 ║                                                                      ║
-║  FLC - FORMING LIMIT (v7.2)                                          ║
-║    FLC(β) = FLC₀ × (1-η) × h(β, R, τ/σ)                             ║
-║    Mean error: ~3% (geometry-based, minimal calibration)             ║
-║    >>> FLCPredictor().predict(beta=0.0, material='SPCC')             ║
+║  FLC v8.1 - 7-MODE DISCRETE FORMULATION                              ║
+║    ε₁,j = |V|_eff × C_j / R_j                                        ║
+║    C_j = 1 + 0.75β + 0.48β²  (localization, frozen)                  ║
+║    R_j = w_σ + w_τ/(τ/σ) + w_c/R_comp  (mixed resistance)            ║
+║    Mean error: 4.7% across 49 points (7 materials × 7 modes)         ║
 ║                                                                      ║
-║  FORMING-FATIGUE (v8.0)                                              ║
-║    r_th_eff = r_th_virgin × (1 - η_forming)                          ║
-║    >>> FormingFatigueIntegrator().effective_r_th(0.4, 'BCC')         ║
+║    >>> flc = FLCPredictor()                                          ║
+║    >>> flc.add_from_v69('SPCC', flc0=0.225, base_element='Fe')       ║
+║    >>> eps1 = flc.predict('SPCC', 'Plane Strain')                    ║
 ║                                                                      ║
 ║  DBT TEMPERATURE                                                     ║
 ║    3 views: Grain size / Temperature / Segregation (time)            ║
 ║    >>> DBTUnified().predict_dbtt(material, grain_size)               ║
 ║                                                                      ║
 ╠══════════════════════════════════════════════════════════════════════╣
-║  Core Principle:                                                     ║
+║  Core Equations:                                                     ║
 ║    Λ = K / |V|_eff    (Λ > 1 → yield/fracture)                      ║
-║    m = Z × f_d        (topology = geometry × electron directionality)║
+║    τ/σ = (α_s/α_t) × C_class × T_twin × A_texture                   ║
+║    FLC: 1-point calibration from FLC₀ → all 7 modes                  ║
 ║                                                                      ║
-║  Authors: Masamichi Iizumi & tamaki                                ║
+║  Authors: Masamichi Iizumi & Tamaki                                  ║
 ╚══════════════════════════════════════════════════════════════════════╝
     """)
