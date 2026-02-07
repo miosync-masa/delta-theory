@@ -54,8 +54,9 @@ from .materials import Material, MATERIALS, BD_RATIO_SQ, get_material, list_mate
 # The import is optional so that this module remains usable even if dbt_unified.py
 # is not present in your runtime environment.
 try:
-    from dbt_unified import DBTUnified, DBTCore, Material as DBTMaterial, MATERIAL_FE
+    from .dbt_unified import DBTUnified, DBTCore, Material as DBTMaterial, MATERIAL_FE
 except Exception:
+  
     DBTUnified = None
     DBTCore = None
     DBTMaterial = None
