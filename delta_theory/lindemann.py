@@ -513,8 +513,8 @@ Formula:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    """Main CLI entry point"""
-    
+    # 起動時にランダムで表示
+    show_banner()  # ← これだけ！
     parser = create_parser()
     args = parser.parse_args(argv)
     
@@ -666,13 +666,6 @@ def main(argv: Optional[List[str]] = None) -> int:
 # ==============================================================================
 # Module Entry Point
 # ==============================================================================
-
-def main() -> None:
-    # 起動時にランダムで表示
-    show_banner()  # ← これだけ！
-    parser = build_parser()
-    args = parser.parse_args()
-    args.func(args)
 
 if __name__ == "__main__":
     sys.exit(main())
