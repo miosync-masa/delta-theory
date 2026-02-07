@@ -42,7 +42,8 @@ import warnings
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Union
 import numpy as np
-
+import random
+from .banners import show_banner
 
 # ==============================================================================
 # Try to import v6.9b
@@ -640,6 +641,12 @@ def create_material_from_v69(name: str, flc0: float, base_element: str,
 # ==============================================================================
 # Demo
 # ==============================================================================
+def main() -> None:
+    # 起動時にランダムで表示
+    show_banner()  # ← これだけ！
+    parser = build_parser()
+    args = parser.parse_args()
+    args.func(args)
 
 def demo():
     """Demonstration of v8.1 capabilities."""
