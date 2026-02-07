@@ -41,7 +41,7 @@ import random
 
 import numpy as np
 from .banners import show_banner
-from .materials import Material, MATERIALS, BD_RATIO_SQ, get_material, list_materials
+from .material import Material, MATERIALS, BD_RATIO_SQ, get_material, list_materials
 
 # ==============================================================================
 # Optional import: DBT/DBTT unified model (separate module)
