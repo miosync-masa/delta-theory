@@ -146,31 +146,11 @@ except ImportError:
     MATERIAL_FE = None
 
 # ==============================================================================
-# lindemann.py exports
+# lindemann.py exports (lazy import)
 # ==============================================================================
-from .lindemann import (
-    # Core functions
-    iizumi_lindemann,           # Main prediction function
-    conventional_lindemann,     # For comparison
-    get_c_geo,                  # Get C_geo for structure
-    rms_displacement,           # δ_L × r_nn
-    predict_delta_L,            # Material database interface
-    
-    # Validation
-    validate_all,               # Run full validation
-    print_validation_report,    # Formatted output
-    print_latex_table,          # LaTeX table generation
-    
-    # Constants
-    C_IIZUMI,                   # √(4/5) ≈ 0.8944
-    XI_STRUCT,                  # {'BCC': 1.0, 'FCC': 1.0, 'HCP': 0.875}
-    Z_REF,                      # 8 (BCC reference)
-    C_CONVENTIONAL,             # √48 ≈ 6.928
-    
-    # Data classes
-    MetalData,                  # Standalone metal data
-    VALIDATION_DATA,            # Reference dataset (7 metals)
-)
+# Imported lazily via __getattr__ to prevent RuntimeWarning
+# when running `python -m delta_theory.lindemann`
+# See __getattr__ at bottom of file.
 
 # ==============================================================================
 # Optional: FatigueDB (requires upstash-redis)
@@ -183,7 +163,7 @@ except ImportError:
 # ==============================================================================
 # Package Metadata
 # ==============================================================================
-__version__ = "8.2.0"
+__version__ = "8.4.0"
 __author__ = "Masamichi Iizumi & Tamaki"
 
 __all__ = [
@@ -321,3 +301,31 @@ def info():
 ║  Authors: Masamichi Iizumi & Tamaki                                  ║
 ╚══════════════════════════════════════════════════════════════════════╝
     """)
+
+
+# ==============================================================================
+# Lazy Import for lindemann (avoids -m execution warning)
+# ==============================================================================
+_LINDEMANN_EXPORTS = {
+    "iizumi_lindemann",
+    "conventional_lindemann",
+    "get_c_geo",
+    "rms_displacement",
+    "predict_delta_L",
+    "validate_all",
+    "print_validation_report",
+    "print_latex_table",
+    "C_IIZUMI",
+    "XI_STRUCT",
+    "Z_REF",
+    "C_CONVENTIONAL",
+    "MetalData",
+    "VALIDATION_DATA",
+}
+
+def __getattr__(name):
+    """Lazy import for lindemann module to avoid -m execution warning."""
+    if name in _LINDEMANN_EXPORTS:
+        from . import lindemann
+        return getattr(lindemann, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
