@@ -41,7 +41,7 @@ import random
 
 import numpy as np
 from .banners import show_banner
-from .material import Material, MATERIALS, BD_RATIO_SQ, get_material, list_materials
+from .materials import Material, MATERIALS, BD_RATIO_SQ, get_material, list_materials
 
 # ==============================================================================
 # Optional import: DBT/DBTT unified model (separate module)
@@ -73,7 +73,7 @@ ALPHA_TAYLOR = 0.3
 # ==============================================================================
 # v5.0 δ-yield constants
 # ==============================================================================
-# BD_RATIO_SQ = (b/d)^2 = 3/2 — imported from material.py
+# BD_RATIO_SQ = (b/d)^2 = 3/2 — imported from materials.py
 
 N_EXPONENT = {'interstitial': 0.90, 'substitutional': 0.95}
 
@@ -96,12 +96,12 @@ T_REF = {
 }
 
 # ==============================================================================
-# Material database — imported from material.py
+# Material database — imported from materials.py
 # ==============================================================================
 # Material class, MATERIALS dict, BD_RATIO_SQ, get_material(), list_materials()
-# are all imported from material.py (single source of truth).
+# are all imported from materials.py (single source of truth).
 #
-# Field name mapping (unified_v6.9 → material.py):
+# Field name mapping (unified_v6.9 → materials.py):
 #   mat.Eb  → mat.E_bond_eV
 #   mat.dL  → mat.delta_L
 #   mat.G   → mat.G (property: E/(2(1+ν)))
