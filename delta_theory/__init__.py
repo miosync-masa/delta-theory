@@ -146,6 +146,33 @@ except ImportError:
     MATERIAL_FE = None
 
 # ==============================================================================
+# lindemann.py exports
+# ==============================================================================
+from .lindemann import (
+    # Core functions
+    iizumi_lindemann,           # Main prediction function
+    conventional_lindemann,     # For comparison
+    get_c_geo,                  # Get C_geo for structure
+    rms_displacement,           # δ_L × r_nn
+    predict_delta_L,            # Material database interface
+    
+    # Validation
+    validate_all,               # Run full validation
+    print_validation_report,    # Formatted output
+    print_latex_table,          # LaTeX table generation
+    
+    # Constants
+    C_IIZUMI,                   # √(4/5) ≈ 0.8944
+    XI_STRUCT,                  # {'BCC': 1.0, 'FCC': 1.0, 'HCP': 0.875}
+    Z_REF,                      # 8 (BCC reference)
+    C_CONVENTIONAL,             # √48 ≈ 6.928
+    
+    # Data classes
+    MetalData,                  # Standalone metal data
+    VALIDATION_DATA,            # Reference dataset (7 metals)
+)
+
+# ==============================================================================
 # Optional: FatigueDB (requires upstash-redis)
 # ==============================================================================
 try:
@@ -219,6 +246,22 @@ __all__ = [
     "TemperatureView",
     "SegregationView",
     "MATERIAL_FE",
+
+    #lindemann
+    "iizumi_lindemann",
+    "conventional_lindemann", 
+    "get_c_geo",
+    "rms_displacement",
+    "predict_delta_L",
+    "validate_all",
+    "print_validation_report",
+    "print_latex_table",
+    "C_IIZUMI",
+    "XI_STRUCT",
+    "Z_REF",
+    "C_CONVENTIONAL",
+    "MetalData",
+    "VALIDATION_DATA",
     
     # === FatigueDB (optional) ===
     "FatigueDB",
