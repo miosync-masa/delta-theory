@@ -47,10 +47,11 @@ class TestMaterial:
             assert name in MATERIALS
 
     def test_material_fields(self):
-        """Material フィールドの整合性"""
-        from delta_theory.material import MATERIALS
+        """Material フィールドの整合性（主要10金属のみ）"""
+        from delta_theory.material import get_material, list_materials
 
-        for name, mat in MATERIALS.items():
+        for name in list_materials():
+            mat = get_material(name)
             assert mat.name == name
             assert mat.structure in ["BCC", "FCC", "HCP"]
             assert mat.T_m > 0, f"{name}: T_m should be positive"
@@ -61,6 +62,15 @@ class TestMaterial:
             assert mat.E > 0, f"{name}: Young's modulus should be positive"
             assert 0 < mat.nu < 0.5, f"{name}: Poisson's ratio should be in (0, 0.5)"
 
+    def test_materials_aliases(self):
+        """MATERIALSにエイリアスが含まれる"""
+        from delta_theory.material import MATERIALS
+
+        # エイリアスは同じMaterialインスタンスを指す
+        assert MATERIALS["Fe"] is MATERIALS["Iron"]
+        assert MATERIALS["Fe"] is MATERIALS["SECD"]
+        assert MATERIALS["Cu"] is MATERIALS["Copper"]
+
     def test_bd_ratio_sq(self):
         """BD_RATIO_SQ = 3/2 が正しい"""
         from delta_theory.material import BD_RATIO_SQ
@@ -70,14 +80,15 @@ class TestMaterial:
 
     def test_f_d_backward_compat(self):
         """mat.f_d プロパティ（後方互換）= BD_RATIO_SQ × f_d_elec"""
-        from delta_theory.material import BD_RATIO_SQ, MATERIALS
+        from delta_theory.material import BD_RATIO_SQ, get_material, list_materials
 
         old_f_d = {
             "Fe": 1.5, "W": 4.7, "Cu": 2.0, "Al": 1.6, "Ni": 2.6,
             "Au": 1.1, "Ag": 2.0, "Ti": 5.7, "Mg": 8.2, "Zn": 2.0,
         }
 
-        for name, mat in MATERIALS.items():
+        for name in list_materials():
+            mat = get_material(name)
             # f_d property = BD_RATIO_SQ × f_d_elec
             assert abs(mat.f_d - BD_RATIO_SQ * mat.f_d_elec) < 1e-15
             # matches old values
@@ -94,9 +105,10 @@ class TestMaterial:
 
     def test_properties_computed(self):
         """計算プロパティが正常"""
-        from delta_theory.material import MATERIALS
+        from delta_theory.material import get_material, list_materials
 
-        for name, mat in MATERIALS.items():
+        for name in list_materials():
+            mat = get_material(name)
             # G (shear modulus) from E and nu
             G_calc = mat.E / (2 * (1 + mat.nu))
             assert abs(mat.G - G_calc) < 1e-3, f"{name}: G mismatch"
@@ -150,10 +162,10 @@ class TestMaterial:
         assert len(bcc) + len(fcc) + len(hcp) == 10
 
     def test_get_material_error(self):
-        """存在しない金属でKeyError"""
+        """存在しない金属でValueError"""
         from delta_theory.material import get_material
 
-        with pytest.raises(KeyError):
+        with pytest.raises(ValueError):
             get_material("Unobtanium")
 
     def test_material_gpu_backward_compat(self):
@@ -189,7 +201,8 @@ class TestMaterial:
         from delta_theory.material import get_material
 
         fe = get_material("Fe")
-        with pytest.raises(AttributeError):
+        # Python 3.11+: FrozenInstanceError, Python <3.11: AttributeError
+        with pytest.raises((AttributeError, TypeError)):
             fe.name = "NotFe"  # type: ignore
 
 
@@ -202,7 +215,7 @@ class TestUnifiedYieldFatigue:
 
     def test_import(self):
         """インポートテスト"""
-        from delta_theory.unified_yield_fatigue_v6_9 import (
+        from delta_theory.unified_yield_fatigue_v7_0 import (
             FATIGUE_CLASS_PRESET,
             MATERIALS,
         )
@@ -213,28 +226,27 @@ class TestUnifiedYieldFatigue:
     def test_materials_from_material_py(self):
         """MATERIALS は material.py と同一オブジェクト"""
         from delta_theory.material import MATERIALS as MAT_DIRECT
-        from delta_theory.unified_yield_fatigue_v6_9 import MATERIALS as MAT_UNIFIED
+        from delta_theory.unified_yield_fatigue_v7_0 import MATERIALS as MAT_UNIFIED
 
         assert MAT_DIRECT is MAT_UNIFIED
 
     def test_sigma_y_positive(self):
         """降伏応力は正"""
-        from delta_theory.unified_yield_fatigue_v6_9 import MATERIALS, calc_sigma_y
+        from delta_theory.material import get_material, list_materials
+        from delta_theory.unified_yield_fatigue_v7_0 import calc_sigma_y
 
-        for name, mat in MATERIALS.items():
+        for name in list_materials():
+            mat = get_material(name)
             y = calc_sigma_y(mat, T_K=300)
             assert y["sigma_y"] > 0, f"{name}: σ_y should be positive"
             assert y["sigma_base"] > 0, f"{name}: σ_base should be positive"
 
     def test_sigma_base_uses_E_eff(self):
         """sigma_base_delta が mat.E_eff / mat.V_act を使用"""
-        from delta_theory.material import BD_RATIO_SQ
-        from delta_theory.unified_yield_fatigue_v6_9 import (
-            MATERIALS,
-            sigma_base_delta,
-        )
+        from delta_theory.material import BD_RATIO_SQ, get_material
+        from delta_theory.unified_yield_fatigue_v7_0 import sigma_base_delta
 
-        mat = MATERIALS["Fe"]
+        mat = get_material("Fe")
         sigma = sigma_base_delta(mat, T_K=300)
         assert sigma > 0
 
@@ -248,10 +260,8 @@ class TestUnifiedYieldFatigue:
 
     def test_sigma_y_v69_backward_compat(self):
         """v6.9と同一の降伏応力値を出力"""
-        from delta_theory.unified_yield_fatigue_v6_9 import (
-            MATERIALS,
-            sigma_base_delta,
-        )
+        from delta_theory.material import get_material
+        from delta_theory.unified_yield_fatigue_v7_0 import sigma_base_delta
 
         # v6.9で検証済みの値（10金属, 300K）
         v69_values = {
@@ -261,16 +271,17 @@ class TestUnifiedYieldFatigue:
         }
 
         for name, expected in v69_values.items():
-            sigma = sigma_base_delta(MATERIALS[name], T_K=300)
+            sigma = sigma_base_delta(get_material(name), T_K=300)
             assert abs(sigma - expected) < 0.001, (
                 f"{name}: σ={sigma:.4f}, expected={expected:.4f}"
             )
 
     def test_sigma_y_temperature_dependence(self):
         """降伏応力は温度上昇で低下"""
-        from delta_theory.unified_yield_fatigue_v6_9 import MATERIALS, calc_sigma_y
+        from delta_theory.material import get_material
+        from delta_theory.unified_yield_fatigue_v7_0 import calc_sigma_y
 
-        mat = MATERIALS["Fe"]
+        mat = get_material("Fe")
         y_300 = calc_sigma_y(mat, T_K=300)
         y_600 = calc_sigma_y(mat, T_K=600)
         y_900 = calc_sigma_y(mat, T_K=900)
@@ -279,17 +290,20 @@ class TestUnifiedYieldFatigue:
 
     def test_sigma_y_at_melting(self):
         """融点で降伏応力=0"""
-        from delta_theory.unified_yield_fatigue_v6_9 import MATERIALS, sigma_base_delta
+        from delta_theory.material import get_material, list_materials
+        from delta_theory.unified_yield_fatigue_v7_0 import sigma_base_delta
 
-        for name, mat in MATERIALS.items():
+        for name in list_materials():
+            mat = get_material(name)
             sigma = sigma_base_delta(mat, T_K=mat.T_m)
             assert sigma == 0.0, f"{name}: σ should be 0 at T_m"
 
     def test_solid_solution_strengthening(self):
         """固溶強化は正の寄与"""
-        from delta_theory.unified_yield_fatigue_v6_9 import MATERIALS, calc_sigma_y
+        from delta_theory.material import get_material
+        from delta_theory.unified_yield_fatigue_v7_0 import calc_sigma_y
 
-        mat = MATERIALS["Fe"]
+        mat = get_material("Fe")
         y_pure = calc_sigma_y(mat, T_K=300)
         y_ss = calc_sigma_y(
             mat, T_K=300, c_wt_percent=0.1,
@@ -301,27 +315,27 @@ class TestUnifiedYieldFatigue:
 
     def test_fatigue_preset_bcc(self):
         """BCC材料は明確な疲労限度"""
-        from delta_theory.unified_yield_fatigue_v6_9 import FATIGUE_CLASS_PRESET
+        from delta_theory.unified_yield_fatigue_v7_0 import FATIGUE_CLASS_PRESET
 
         bcc = FATIGUE_CLASS_PRESET["BCC"]
         assert bcc["r_th"] > 0.5, "BCC should have high r_th"
 
     def test_fatigue_preset_fcc(self):
         """FCC材料は疲労限度なし"""
-        from delta_theory.unified_yield_fatigue_v6_9 import FATIGUE_CLASS_PRESET
+        from delta_theory.unified_yield_fatigue_v7_0 import FATIGUE_CLASS_PRESET
 
         fcc = FATIGUE_CLASS_PRESET["FCC"]
         assert fcc["r_th"] < 0.1, "FCC should have low r_th"
 
     def test_fatigue_life_below_threshold(self):
         """r ≤ r_th で無限寿命"""
-        from delta_theory.unified_yield_fatigue_v6_9 import (
-            MATERIALS,
+        from delta_theory.material import get_material
+        from delta_theory.unified_yield_fatigue_v7_0 import (
             calc_sigma_y,
             fatigue_life_const_amp,
         )
 
-        mat = MATERIALS["Fe"]  # BCC, r_th = 0.65
+        mat = get_material("Fe")  # BCC, r_th = 0.65
         y = calc_sigma_y(mat, T_K=300)
 
         result = fatigue_life_const_amp(
@@ -336,13 +350,13 @@ class TestUnifiedYieldFatigue:
 
     def test_fatigue_life_above_threshold(self):
         """r > r_th で有限寿命"""
-        from delta_theory.unified_yield_fatigue_v6_9 import (
-            MATERIALS,
+        from delta_theory.material import get_material
+        from delta_theory.unified_yield_fatigue_v7_0 import (
             calc_sigma_y,
             fatigue_life_const_amp,
         )
 
-        mat = MATERIALS["Fe"]
+        mat = get_material("Fe")
         y = calc_sigma_y(mat, T_K=300)
 
         result = fatigue_life_const_amp(
@@ -358,30 +372,33 @@ class TestUnifiedYieldFatigue:
 
     def test_tau_over_sigma(self):
         """τ/σ変換が正"""
-        from delta_theory.unified_yield_fatigue_v6_9 import MATERIALS, tau_over_sigma
+        from delta_theory.material import get_material, list_materials
+        from delta_theory.unified_yield_fatigue_v7_0 import tau_over_sigma
 
-        for name, mat in MATERIALS.items():
+        for name in list_materials():
+            mat = get_material(name)
             ratio = tau_over_sigma(mat)
             assert ratio > 0, f"{name}: τ/σ should be positive"
 
     def test_yield_by_mode(self):
-        """モード別降伏応力"""
-        from delta_theory.unified_yield_fatigue_v6_9 import (
-            MATERIALS,
+        """モード別降伏応力（returns Tuple[float, dict]）"""
+        from delta_theory.material import get_material
+        from delta_theory.unified_yield_fatigue_v7_0 import (
             calc_sigma_y,
             yield_by_mode,
         )
 
-        mat = MATERIALS["Fe"]
+        mat = get_material("Fe")
         y = calc_sigma_y(mat, T_K=300)
 
-        tensile = yield_by_mode(mat, y["sigma_y"], mode="tensile")
-        shear = yield_by_mode(mat, y["sigma_y"], mode="shear")
-        comp = yield_by_mode(mat, y["sigma_y"], mode="compression")
+        tensile, info_t = yield_by_mode(mat, y["sigma_y"], mode="tensile")
+        shear, info_s = yield_by_mode(mat, y["sigma_y"], mode="shear")
+        comp, info_c = yield_by_mode(mat, y["sigma_y"], mode="compression")
 
         assert tensile > 0
         assert shear > 0
         assert comp > 0
+        assert "tau_over_sigma" in info_t
 
 
 # =============================================================================
@@ -393,11 +410,12 @@ class TestGeometricFactorization:
 
     def test_e_eff_decomposition(self):
         """E_eff = E_bond × α × (b/d)² × f_d_elec"""
-        from delta_theory.material import BD_RATIO_SQ, MATERIALS
+        from delta_theory.material import BD_RATIO_SQ, get_material, list_materials
 
         eV_to_J = 1.602176634e-19
 
-        for name, mat in MATERIALS.items():
+        for name in list_materials():
+            mat = get_material(name)
             E_eff_manual = (
                 mat.E_bond_eV * eV_to_J
                 * mat.alpha0
@@ -444,7 +462,7 @@ class TestGeometricFactorization:
             assert preset.alpha0 > 0
 
         # M_TAYLOR is universal polycrystal constant
-        from delta_theory.unified_yield_fatigue_v6_9 import M_TAYLOR
+        from delta_theory.unified_yield_fatigue_v7_0 import M_TAYLOR
 
         assert M_TAYLOR == 3.0
 
