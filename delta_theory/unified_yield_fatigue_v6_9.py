@@ -1,7 +1,22 @@
 #!/usr/bin/env python3
-"""Unified Yield + δ-fatigue (v6.9b)
+"""Unified Yield + δ-fatigue (v7.0)
 
-- Yield model: v5.0 FINAL
+- Yield model: v7.0 — geometric factorization
+  σ_y = (E_bond × α × (b/d)² × f_d_elec / V_act) × (δ_L × HP / 2πM)
+
+  Key change from v6.9:
+    Old: f_d (combined geometric + electronic factor)
+    New: BD_RATIO_SQ × f_d_elec (separated)
+      - BD_RATIO_SQ = (b/d)² = 3/2 — pure crystallographic constant
+        (d/b = √(2/3) is universal across BCC, FCC, HCP)
+      - f_d_elec — electronic directionality factor (d-electron contribution only)
+
+  Note on self-consistency:
+    E_bond (sublimation heat) and δ_L (Debye-Waller) are BOTH measured on
+    real polycrystals with defects.  Their defect effects partially cancel
+    (E_bond_real < E_bond_ideal, δ_L_real > δ_L_ideal), making the formula
+    self-consistent without a separate polycrystal correction factor α_c.
+
   σ_y = σ_base(δ) + Δσ_ss(c) + Δσ_ρ(ε) + Δσ_ppt(r,f)
 
 - Fatigue model: v6.8 δ-fatigue damage
@@ -13,19 +28,20 @@
   τ/σ = (α_s/α_t) * C_class * T_twin * A_texture
   σ_c/σ_t = R_comp  (twinning/asymmetry)
 
-This lets v6.9 operate not only with tensile amplitude σ_a, but also
+This lets v7.0 operate not only with tensile amplitude σ_a, but also
 with shear amplitude τ_a or compression amplitude σ_a^c.
 """
 
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from typing import Dict, Literal, Optional, Tuple
 import random
 
 import numpy as np
 from .banners import show_banner
+from .material import Material, MATERIALS, BD_RATIO_SQ, get_material, list_materials
 
 # ==============================================================================
 # Optional import: DBT/DBTT unified model (separate module)
@@ -57,7 +73,8 @@ ALPHA_TAYLOR = 0.3
 # ==============================================================================
 # v5.0 δ-yield constants
 # ==============================================================================
-ALPHA_DELTA = {'BCC': 0.289, 'FCC': 0.250, 'HCP': 0.350}
+# BD_RATIO_SQ = (b/d)^2 = 3/2 — imported from material.py
+
 N_EXPONENT = {'interstitial': 0.90, 'substitutional': 0.95}
 
 # Work hardening presets
@@ -72,23 +89,6 @@ K_RHO = {
 CU_TAU_SIGMA_TORSION = 0.565  # Cu torsion calibration point
 DEFAULT_BCC_W110 = 0.0        # {112} dominant
 
-# Twinning factor (tension) and compression/tension asymmetry
-T_TWIN = {
-    'Cu': 1.0, 'Al': 1.0, 'Ni': 1.0, 'Au': 1.0, 'Ag': 1.0,
-    'Fe': 1.0, 'W':  1.0,
-    'Ti': 1.0,
-    'Mg': 0.6,
-    'Zn': 0.9,
-}
-
-R_COMP = {  # σ_c/σ_t
-    'Cu': 1.0, 'Al': 1.0, 'Ni': 1.0, 'Au': 1.0, 'Ag': 1.0,
-    'Fe': 1.0, 'W':  1.0,
-    'Ti': 1.0,
-    'Mg': 0.6,
-    'Zn': 1.2,
-}
-
 T_REF = {
     'BCC': np.array([1, 0, 0], dtype=float),
     'FCC': np.array([1, 1, 0], dtype=float),
@@ -96,64 +96,45 @@ T_REF = {
 }
 
 # ==============================================================================
-# Material database
+# Material database — imported from material.py
 # ==============================================================================
-@dataclass(frozen=True)
-class Material:
-    name: str
-    structure: Literal['BCC', 'FCC', 'HCP']
-
-    # v5.0 base-yield inputs
-    a: float      # lattice parameter [m]
-    T_m: float    # melting point [K]
-    dL: float     # Lindemann parameter
-    Eb: float     # bond energy [eV]
-    f_d: float    # d-electron directionality factor
-    G: float      # shear modulus [Pa]
-
-    # v4.1 τ/σ inputs
-    c_a: float = 1.633
-    A_texture: float = 1.0
-    T_twin: float = 1.0
-    R_comp: float = 1.0
-
-
-MATERIALS: Dict[str, Material] = {
-    'Fe': Material('Fe', 'BCC', 2.92e-10, 1811, 0.18, 4.28, 1.5, 82e9, 1.633, 1.0, T_TWIN['Fe'], R_COMP['Fe']),
-    'W':  Material('W',  'BCC', 3.16e-10, 3695, 0.16, 8.90, 4.7, 161e9, 1.633, 1.0, T_TWIN['W'],  R_COMP['W']),
-    'Cu': Material('Cu', 'FCC', 3.61e-10, 1357, 0.10, 3.49, 2.0, 48e9, 1.633, 1.0, T_TWIN['Cu'], R_COMP['Cu']),
-    'Al': Material('Al', 'FCC', 4.05e-10, 933,  0.10, 3.39, 1.6, 26e9, 1.633, 1.0, T_TWIN['Al'], R_COMP['Al']),
-    'Ni': Material('Ni', 'FCC', 3.52e-10, 1728, 0.11, 4.44, 2.6, 76e9, 1.633, 1.0, T_TWIN['Ni'], R_COMP['Ni']),
-    'Au': Material('Au', 'FCC', 4.08e-10, 1337, 0.10, 3.81, 1.1, 27e9, 1.633, 1.0, T_TWIN['Au'], R_COMP['Au']),
-    'Ag': Material('Ag', 'FCC', 4.09e-10, 1235, 0.10, 2.95, 2.0, 30e9, 1.633, 1.0, T_TWIN['Ag'], R_COMP['Ag']),
-    'Ti': Material('Ti', 'HCP', 2.95e-10, 1941, 0.10, 4.85, 5.7, 44e9, 1.587, 1.0, T_TWIN['Ti'], R_COMP['Ti']),
-    'Mg': Material('Mg', 'HCP', 3.21e-10, 923,  0.117,1.51, 8.2, 17e9, 1.624, 1.0, T_TWIN['Mg'], R_COMP['Mg']),
-    'Zn': Material('Zn', 'HCP', 2.66e-10, 693,  0.12, 1.35, 2.0, 43e9, 1.856, 1.0, T_TWIN['Zn'], R_COMP['Zn']),
-}
-
+# Material class, MATERIALS dict, BD_RATIO_SQ, get_material(), list_materials()
+# are all imported from material.py (single source of truth).
+#
+# Field name mapping (unified_v6.9 → material.py):
+#   mat.Eb  → mat.E_bond_eV
+#   mat.dL  → mat.delta_L
+#   mat.G   → mat.G (property: E/(2(1+ν)))
+#   mat.f_d → mat.f_d (property: BD_RATIO_SQ × f_d_elec, backward compat)
+#   ALPHA_DELTA[structure] → mat.alpha0 (from StructurePreset)
+#   calc_burgers(a, st) → mat.b (property)
 # ==============================================================================
-# Helpers
-# ==============================================================================
-
-def calc_burgers(a: float, structure: str) -> float:
-    if structure == 'BCC':
-        return a * np.sqrt(3) / 2
-    if structure == 'FCC':
-        return a / np.sqrt(2)
-    return a
 
 # ==============================================================================
 # v5.0 yield components
 # ==============================================================================
 
 def sigma_base_delta(mat: Material, T_K: float = 300.0) -> float:
-    """Base yield stress from δ-theory [MPa]."""
-    alpha = ALPHA_DELTA[mat.structure]
-    b = calc_burgers(mat.a, mat.structure)
-    V_act = b**3
+    """Base yield stress from δ-theory [MPa].
+
+    σ_y = (E_bond × α × (b/d)² × f_d_elec / V_act) × (δ_L × HP / 2πM)
+
+    Components:
+      E_bond   : cohesive energy [eV] — experimental (sublimation heat),
+                 includes real-crystal defect effects (vacancies, GBs, dislocations)
+      α        : bond-vector projection (pure geometry) — mat.alpha0
+      (b/d)²   : slip-plane geometric constant = 3/2 (BD_RATIO_SQ)
+      f_d_elec : electronic directionality factor (d-electron contribution)
+      V_act    : activation volume = b³ (pure geometry) — mat.V_act
+      δ_L      : Lindemann parameter — experimental (Debye-Waller),
+                 includes real-crystal defect effects (self-consistent with E_bond)
+      HP       : homologous pressure = 1 - T/T_m (pure geometry)
+      M        : Taylor factor (polycrystal averaging, pure geometry)
+    
+    Note: mat.E_eff already computes E_bond × α × (b/d)² × f_d_elec [J]
+    """
     HP = max(0.0, 1.0 - T_K / mat.T_m)
-    E_eff = mat.Eb * ELECTRON_CHARGE_J * alpha * mat.f_d
-    sigma = (E_eff / V_act) * mat.dL * HP / (2 * PI * M_TAYLOR)
+    sigma = (mat.E_eff / mat.V_act) * mat.delta_L * HP / (2 * PI * M_TAYLOR)
     return sigma / 1e6
 
 
@@ -303,7 +284,7 @@ def delta_sigma_taylor(eps: float, mat: Material, rho_0: float = 1e12) -> float:
         return 0.0
     K = K_RHO.get(mat.name, K_RHO.get(mat.structure, 1e15))
     rho = rho_0 + K * max(eps, 0.0)
-    b = calc_burgers(mat.a, mat.structure)
+    b = mat.b
     return M_TAYLOR * ALPHA_TAYLOR * mat.G * b * np.sqrt(rho) / 1e6
 
 
@@ -328,7 +309,7 @@ def delta_sigma_orowan(r_nm: float, f: float, G: float, b: float) -> float:
 def delta_sigma_ppt(r_nm: float, f: float, gamma: float, mat: Material, A: float = 1.0) -> Tuple[float, str]:
     if r_nm <= 0 or f <= 0:
         return 0.0, 'None'
-    b = calc_burgers(mat.a, mat.structure)
+    b = mat.b
     d_cut = A * delta_sigma_cutting(r_nm, f, gamma, mat.G, b)
     d_oro = A * delta_sigma_orowan(r_nm, f, mat.G, b)
     return (d_cut, 'Cutting') if d_cut <= d_oro else (d_oro, 'Orowan')
