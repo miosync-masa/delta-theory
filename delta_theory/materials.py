@@ -1,19 +1,18 @@
-#!/usr/bin/env python3
 """
-================================================================================
-materials.py - 統合材料データベース
-================================================================================
+δ-theory 統合材料データベース (v7.0)
 
-δ理論で使用する全材料パラメータを一元管理
-
-統合元:
-  - materials.py (MaterialGPU)
-  - unified_yield_fatigue_v6_9.py (Material + MATERIALS)
-  - dbt_unified.py (Material + MATERIAL_FE)
-  - delta_fatigue_app.py (MATERIAL_DB)
+v7.0 変更点:
+  - BD_RATIO_SQ = (b/d)² = 3/2 を純粋結晶幾何定数として分離
+  - f_d → f_d_elec (電子構造寄与のみ)
+  - 旧 f_d = BD_RATIO_SQ × f_d_elec（後方互換プロパティで提供）
+  
+  自己整合性の注記:
+    E_bond（蒸発熱）と δ_L（Debye-Waller）はどちらも欠損を含む
+    実物多結晶の測定値。欠損効果は部分的に相殺するため、
+    別途の多結晶補正因子 α_c は不要。
 
 Author: 環 & ご主人さま (飯泉真道)
-Date: 2026-02-02
+Date: 2026-02-07
 ================================================================================
 """
 
@@ -30,6 +29,12 @@ import numpy as np
 eV_to_J: float = 1.602176634e-19   # 1 eV in Joule
 k_B: float = 1.380649e-23          # Boltzmann constant [J/K]
 PI: float = np.pi
+
+# (b/d)^2 = 3/2: universal slip-plane geometric constant.
+# d/b = sqrt(2/3) for BCC, FCC, HCP — identical across crystal structures.
+# This is a pure crystallographic constant, NOT a fitting parameter.
+# Physical meaning: ratio of slip-plane spacing (d) to Burgers vector (b).
+BD_RATIO_SQ: float = 1.5  # (b/d)^2 = 3/2
 
 
 # ==============================================================================
@@ -84,13 +89,22 @@ STRUCTURE_PRESETS: Dict[str, StructurePreset] = {
 @dataclass
 class Material:
     """
-    統合材料データベース
+    統合材料データベース (v7.0)
     
     全てのδ理論モジュールで使用する材料パラメータを一元管理
     
+    v7.0: f_d を BD_RATIO_SQ × f_d_elec に分離
+      - BD_RATIO_SQ = (b/d)² = 3/2 — 純粋結晶幾何定数
+      - f_d_elec — 電子構造寄与のみ（d電子方向性）
+    
+    σ_y の全構成要素の分類:
+      【純粋幾何】   α, (b/d)², V_act=b³, HP, M, 2π
+      【実測セット】 E_bond(蒸発熱), δ_L(Debye-Waller) — 欠損込みで自己整合
+      【電子物理】   f_d_elec のみ
+    
     カテゴリ:
       [基本] 結晶構造、格子定数、弾性定数、熱物性
-      [δ理論] Lindemann閾値、結合エネルギー、d電子方向性
+      [δ理論] Lindemann閾値、結合エネルギー、電子方向性
       [τ/σ] せん断/引張比、双晶因子、圧縮/引張比
       [粒界] 分離仕事、偏析エネルギー (DBT用)
       [疲労] 熱軟化、Born崩壊、A_int (疲労用)
@@ -108,9 +122,10 @@ class Material:
     nu: float                           # ポアソン比
     rho: float                          # 密度 [kg/m³]
     M_amu: float                        # 原子質量 [amu]
-    delta_L: float                      # Lindemann閾値
-    E_bond_eV: float                    # 結合エネルギー [eV]
-    f_d: float                          # d電子方向性係数
+    delta_L: float                      # Lindemann閾値（実測, Debye-Waller）
+    E_bond_eV: float                    # 結合エネルギー [eV]（実測, 蒸発熱）
+    f_d_elec: float                     # 電子方向性係数（d電子寄与のみ）
+                                        # NOTE: 旧 f_d = BD_RATIO_SQ * f_d_elec
     
     # ==========================================================================
     # [オプション] デフォルト値あり
@@ -193,9 +208,23 @@ class Material:
         return self.b ** 3
     
     @property
+    def f_d(self) -> float:
+        """後方互換: 旧 f_d = BD_RATIO_SQ × f_d_elec"""
+        return BD_RATIO_SQ * self.f_d_elec
+    
+    @property
     def E_eff(self) -> float:
-        """有効結合エネルギー [J]"""
-        return self.E_bond_eV * eV_to_J * self.alpha0 * self.f_d
+        """有効結合エネルギー [J]
+        
+        v7.0: E_eff = E_bond × α₀ × (b/d)² × f_d_elec
+        
+        構成要素の分類:
+          E_bond   — 実測（蒸発熱, 欠損込み）
+          α₀       — 純粋幾何（結合ベクトル射影）
+          (b/d)²   — 純粋幾何（すべり面定数 = 3/2）
+          f_d_elec — 電子物理（d電子方向性）
+        """
+        return self.E_bond_eV * eV_to_J * self.alpha0 * BD_RATIO_SQ * self.f_d_elec
     
     # ==========================================================================
     # 表示
@@ -208,7 +237,7 @@ class Material:
         """詳細サマリー"""
         return f"""
 {'='*60}
-Material: {self.name} ({self.structure})
+Material: {self.name} ({self.structure})  [v7.0 geometric factorization]
 {'='*60}
   [基本]
     a          = {self.a*1e10:.3f} Å
@@ -218,11 +247,13 @@ Material: {self.name} ({self.structure})
     ν          = {self.nu}
     ρ          = {self.rho} kg/m³
   
-  [δ理論]
-    δ_L        = {self.delta_L}
-    E_bond     = {self.E_bond_eV} eV
-    f_d        = {self.f_d}
-    α₀         = {self.alpha0} (preset)
+  [δ理論]  σ_y = (E_bond × α × (b/d)² × f_d_elec / V_act) × (δ_L × HP / 2πM)
+    δ_L        = {self.delta_L}        [実測: Debye-Waller, 欠損込み]
+    E_bond     = {self.E_bond_eV} eV   [実測: 蒸発熱, 欠損込み]
+    (b/d)²     = {BD_RATIO_SQ}         [幾何: すべり面定数]
+    f_d_elec   = {self.f_d_elec:.4f}   [電子: d電子方向性]
+    f_d(旧)    = {self.f_d:.4f}        [= (b/d)² × f_d_elec, 後方互換]
+    α₀         = {self.alpha0}         [幾何: preset]
     b          = {self.b*1e10:.3f} Å
   
   [τ/σ]
@@ -261,7 +292,7 @@ Fe = Material(
     # δ理論
     delta_L=0.18,
     E_bond_eV=4.28,
-    f_d=1.5,
+    f_d_elec=1.0,          # was f_d=1.5 → 1.5/1.5 = 1.0 (基準点!)
     # τ/σ
     T_twin=1.0,
     R_comp=1.0,
@@ -291,7 +322,7 @@ W = Material(
     # δ理論
     delta_L=0.16,
     E_bond_eV=8.90,
-    f_d=4.7,
+    f_d_elec=47/15,        # was f_d=4.7 → 4.7/1.5 = 47/15
     # τ/σ
     T_twin=1.0,
     R_comp=1.0,
@@ -321,7 +352,7 @@ Cu = Material(
     # δ理論
     delta_L=0.10,
     E_bond_eV=3.49,
-    f_d=2.0,
+    f_d_elec=4/3,          # was f_d=2.0 → 2.0/1.5 = 4/3
     # τ/σ
     T_twin=1.0,
     R_comp=1.0,
@@ -347,7 +378,7 @@ Al = Material(
     # δ理論
     delta_L=0.10,
     E_bond_eV=3.39,
-    f_d=1.6,
+    f_d_elec=16/15,        # was f_d=1.6 → 1.6/1.5 = 16/15
     # τ/σ
     T_twin=1.0,
     R_comp=1.0,
@@ -373,7 +404,7 @@ Ni = Material(
     # δ理論
     delta_L=0.11,
     E_bond_eV=4.44,
-    f_d=2.6,
+    f_d_elec=26/15,        # was f_d=2.6 → 2.6/1.5 = 26/15
     # τ/σ
     T_twin=1.0,
     R_comp=1.0,
@@ -399,7 +430,7 @@ Au = Material(
     # δ理論
     delta_L=0.10,
     E_bond_eV=3.81,
-    f_d=1.1,
+    f_d_elec=11/15,        # was f_d=1.1 → 1.1/1.5 = 11/15
     # τ/σ
     T_twin=1.0,
     R_comp=1.0,
@@ -425,7 +456,7 @@ Ag = Material(
     # δ理論
     delta_L=0.10,
     E_bond_eV=2.95,
-    f_d=2.0,
+    f_d_elec=4/3,          # was f_d=2.0 → 2.0/1.5 = 4/3
     # τ/σ
     T_twin=1.0,
     R_comp=1.0,
@@ -455,7 +486,7 @@ Ti = Material(
     # δ理論
     delta_L=0.10,
     E_bond_eV=4.85,
-    f_d=5.7,
+    f_d_elec=19/5,         # was f_d=5.7 → 5.7/1.5 = 19/5
     # τ/σ
     c_a=1.587,
     T_twin=1.0,
@@ -482,7 +513,7 @@ Mg = Material(
     # δ理論
     delta_L=0.117,
     E_bond_eV=1.51,
-    f_d=8.2,
+    f_d_elec=82/15,        # was f_d=8.2 → 8.2/1.5 = 82/15
     # τ/σ
     c_a=1.624,
     T_twin=0.6,   # 双晶活性
@@ -509,7 +540,7 @@ Zn = Material(
     # δ理論
     delta_L=0.12,
     E_bond_eV=1.35,
-    f_d=2.0,
+    f_d_elec=4/3,          # was f_d=2.0 → 2.0/1.5 = 4/3
     # τ/σ
     c_a=1.856,
     T_twin=0.9,
@@ -652,8 +683,10 @@ class MaterialGPU:
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("統合材料データベース テスト")
+    print("統合材料データベース テスト (v7.0)")
     print("=" * 60)
+    
+    print(f"\n[v7.0] BD_RATIO_SQ = (b/d)² = {BD_RATIO_SQ}")
     
     print("\n[利用可能な材料]")
     print(f"  全体: {list_materials()}")
@@ -665,24 +698,35 @@ if __name__ == "__main__":
     for name, preset in STRUCTURE_PRESETS.items():
         print(f"  {name}: r_th={preset.r_th}, n_cl={preset.n_cl}, α₀={preset.alpha0}")
     
+    # v7.0 検算: f_d_elec × BD_RATIO_SQ == 旧f_d
+    print("\n[v7.0 検算: f_d_elec × (b/d)² = 旧f_d]")
+    old_f_d = {'Fe':1.5, 'W':4.7, 'Cu':2.0, 'Al':1.6, 'Ni':2.6,
+               'Au':1.1, 'Ag':2.0, 'Ti':5.7, 'Mg':8.2, 'Zn':2.0}
+    
+    print(f"  {'Metal':<5} {'f_d_elec':>10} {'f_d(prop)':>10} {'f_d(old)':>10} {'match':>6}")
+    print(f"  {'-'*45}")
+    all_ok = True
+    for name in list_materials():
+        mat = get_material(name)
+        fd_prop = mat.f_d  # 後方互換プロパティ
+        fd_old = old_f_d[name]
+        ok = abs(fd_prop - fd_old) < 1e-10
+        all_ok &= ok
+        print(f"  {name:<5} {mat.f_d_elec:>10.6f} {fd_prop:>10.4f} {fd_old:>10.4f} {'✓' if ok else '✗':>6}")
+    print(f"\n  後方互換: {'✓ ALL PASS' if all_ok else '✗ FAIL'}")
+    
+    # σ_base 計算テスト
+    print("\n[σ_base 計算テスト (300K)]")
+    print(f"  {'Metal':<5} {'E_bond':>6} {'α':>6} {'(b/d)²':>6} {'f_d_e':>6} {'δ_L':>6} {'HP':>6} {'σ_y':>8}")
+    print(f"  {'-'*50}")
+    for name in list_materials():
+        mat = get_material(name)
+        HP = max(0, 1 - 300/mat.T_m)
+        sigma = (mat.E_eff / mat.V_act) * mat.delta_L * HP / (2 * PI * mat.M_taylor) / 1e6
+        print(f"  {name:<5} {mat.E_bond_eV:>6.2f} {mat.alpha0:>6.3f} {BD_RATIO_SQ:>6.1f} "
+              f"{mat.f_d_elec:>6.3f} {mat.delta_L:>6.3f} {HP:>6.3f} {sigma:>8.1f}")
+    
     print("\n[材料サマリー: Fe]")
     print(Fe.summary())
-    
-    print("\n[材料サマリー: Cu]")
-    print(Cu.summary())
-    
-    print("\n[材料サマリー: Mg]")
-    print(Mg.summary())
-    
-    print("\n[計算プロパティ確認]")
-    for name in ["Fe", "Cu", "Ti"]:
-        mat = get_material(name)
-        print(f"  {name}: b={mat.b*1e10:.3f}Å, G={mat.G/1e9:.1f}GPa, "
-              f"V_act={mat.V_act*1e30:.3f}Å³")
-    
-    print("\n[後方互換テスト]")
-    mat_gpu = MaterialGPU.get("Fe")
-    print(f"  MaterialGPU.get('Fe'): {mat_gpu}")
-    print(f"  MaterialGPU.Fe(): {MaterialGPU.Fe()}")
     
     print("\n✅ テスト完了!")
