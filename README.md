@@ -101,7 +101,7 @@ delta-theory/
 │   ├── unified_yield_fatigue_v6_9.py     # Unified yield + fatigue model
 │   ├── unified_flc_v8_1.py               # ★ FLC 7-mode discrete (NEW!)
 │   ├── dbt_unified.py                    # DBT/DBTT prediction model
-│   ├── materials.py                      # Materials database
+│   ├── material.py                      # Materials database
 │   ├── banners.py                        # ASCII art banners
 │   └── fatigue_redis_api.py              # FatigueData-AM2022 API
 │
