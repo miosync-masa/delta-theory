@@ -41,8 +41,9 @@ import argparse
 import sys
 from dataclasses import dataclass
 from typing import Dict, List, Literal, Optional, Tuple
-
+import random
 import numpy as np
+from .banners import show_banner　
 
 # Try to import from delta_theory package, fallback to local
 try:
@@ -665,6 +666,13 @@ def main(argv: Optional[List[str]] = None) -> int:
 # ==============================================================================
 # Module Entry Point
 # ==============================================================================
+
+def main() -> None:
+    # 起動時にランダムで表示
+    show_banner()  # ← これだけ！
+    parser = build_parser()
+    args = parser.parse_args()
+    args.func(args)
 
 if __name__ == "__main__":
     sys.exit(main())
