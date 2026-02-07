@@ -50,6 +50,7 @@ except Exception:
 # ==============================================================================
 PI = np.pi
 ELECTRON_CHARGE_J = 1.602176634e-19  # 1 eV in Joule
+BOLTZMANN_J = 1.380649e-23  # Boltzmann constant [J/K]
 M_TAYLOR = 3.0
 ALPHA_TAYLOR = 0.3
 
@@ -156,6 +157,131 @@ def sigma_base_delta(mat: Material, T_K: float = 300.0) -> float:
     return sigma / 1e6
 
 
+# ==============================================================================
+# Low-temperature hardening for BCC: Peierls-Nabarro (thermally activated kink-pair)
+# ------------------------------------------------------------------------------
+# Notes (design intent):
+#   - HP=1-T/Tm captures "high-T softening" (loss of thermal margin).
+#   - BCC low-T hardening is dominated by screw-dislocation lattice friction
+#     (Peierls barrier) and is strongly thermally activated and rate-sensitive.
+#   - We keep it OPTIONAL and *class-style*: a small preset set (p,q,epsdot0)
+#     + per-material (or per-class) τ_P0 and ΔG0.
+#
+# Recommended usage:
+#   - For room-temperature engineering use: keep enable_peierls=False (default).
+#   - For DBTT / cryogenic yield: enable_peierls=True and supply params.
+# ==============================================================================
+
+def tau_peierls_kocks(
+    T_K: float,
+    tau_P0_MPa: float,
+    dG0_eV: float,
+    epsdot: float = 1e-3,
+    epsdot0: float = 1e7,
+    p: float = 0.5,
+    q: float = 1.5,
+) -> float:
+    """Thermally activated Peierls stress τ(T) [MPa] (Kocks-type inversion).
+
+    Strain-rate form:
+        epsdot = epsdot0 * exp( -ΔG(τ) / (kT) )
+    with:
+        ΔG(τ) = ΔG0 * [1 - (τ/τ_P0)^p]^q
+
+    Solving for τ gives:
+        τ(T) = τ_P0 * [1 - X^(1/q)]^(1/p)
+        X = (kT/ΔG0) * ln(epsdot0/epsdot)
+
+    Clipped so that:
+        X >= 1 -> τ = 0
+        T -> 0 -> τ -> τ_P0
+
+    Args:
+        T_K: temperature [K]
+        tau_P0_MPa: Peierls stress at 0 K [MPa]
+        dG0_eV: activation barrier ΔG0 [eV]
+        epsdot: plastic strain rate [1/s]
+        epsdot0: attempt/reference rate [1/s]
+        p,q: barrier shape exponents (class presets)
+
+    Returns:
+        τ(T) [MPa]
+    """
+    if tau_P0_MPa <= 0 or dG0_eV <= 0:
+        return 0.0
+    if T_K <= 1e-9:
+        return float(tau_P0_MPa)
+
+    dG0_J = dG0_eV * ELECTRON_CHARGE_J
+    ln_ratio = float(np.log(max(epsdot0 / max(epsdot, 1e-30), 1.0)))
+    X = (BOLTZMANN_J * float(T_K) / dG0_J) * ln_ratio
+
+    if X >= 1.0:
+        return 0.0
+
+    inner = max(0.0, 1.0 - X ** (1.0 / q))
+    return float(tau_P0_MPa) * (inner ** (1.0 / p))
+
+
+def sigma_peierls_bcc(
+    mat: Material,
+    T_K: float,
+    tau_P0_MPa: float,
+    dG0_eV: float,
+    epsdot: float = 1e-3,
+    epsdot0: float = 1e7,
+    p: float = 0.5,
+    q: float = 1.5,
+) -> float:
+    """Macroscopic Peierls-controlled yield level [MPa] for BCC (polycrystal).
+
+    We compute τ(T) and convert by Taylor factor:
+        σ_P(T) = M * τ(T)
+    """
+    if mat.structure != 'BCC':
+        return 0.0
+    tau = tau_peierls_kocks(T_K, tau_P0_MPa, dG0_eV, epsdot=epsdot, epsdot0=epsdot0, p=p, q=q)
+    return M_TAYLOR * tau
+
+
+def sigma_base_unified(
+    mat: Material,
+    T_K: float = 300.0,
+    enable_peierls: bool = False,
+    peierls_tau_P0_MPa: float = 0.0,
+    peierls_dG0_eV: float = 0.0,
+    peierls_epsdot: float = 1e-3,
+    peierls_epsdot0: float = 1e7,
+    peierls_p: float = 0.5,
+    peierls_q: float = 1.5,
+) -> Tuple[float, str]:
+    """Unified base yield with optional low-T Peierls branch.
+
+    Returns:
+        (sigma_base_MPa, branch_name)
+    """
+    s_delta = sigma_base_delta(mat, T_K)
+
+    if not enable_peierls or mat.structure != 'BCC':
+        return s_delta, 'delta(HP-only)'
+
+    s_p = sigma_peierls_bcc(
+        mat,
+        T_K=T_K,
+        tau_P0_MPa=peierls_tau_P0_MPa,
+        dG0_eV=peierls_dG0_eV,
+        epsdot=peierls_epsdot,
+        epsdot0=peierls_epsdot0,
+        p=peierls_p,
+        q=peierls_q,
+    )
+
+    # Envelope: whichever mechanism requires higher stress dominates.
+    if s_p > s_delta:
+        return s_p, 'Peierls(kink-pair)'
+    return s_delta, 'delta(HP-only)'
+
+
 def delta_sigma_ss(c_wt_percent: float, k: float,
                    solute_type: Optional[Literal['interstitial', 'substitutional']]) -> float:
     if solute_type is None or c_wt_percent <= 0:
@@ -220,14 +346,32 @@ def calc_sigma_y(
     f_ppt: float = 0.0,
     gamma_apb: float = 0.0,
     A_ppt: float = 1.0,
+    enable_peierls: bool = False,
+    peierls_tau_P0_MPa: float = 0.0,
+    peierls_dG0_eV: float = 0.0,
+    peierls_epsdot: float = 1e-3,
+    peierls_epsdot0: float = 1e7,
+    peierls_p: float = 0.5,
+    peierls_q: float = 1.5,
 ) -> Dict[str, float | str]:
-    base = sigma_base_delta(mat, T_K)
+    base, base_branch = sigma_base_unified(
+        mat,
+        T_K=T_K,
+        enable_peierls=enable_peierls,
+        peierls_tau_P0_MPa=peierls_tau_P0_MPa,
+        peierls_dG0_eV=peierls_dG0_eV,
+        peierls_epsdot=peierls_epsdot,
+        peierls_epsdot0=peierls_epsdot0,
+        peierls_p=peierls_p,
+        peierls_q=peierls_q,
+    )
     ss = delta_sigma_ss(c_wt_percent, k_ss, solute_type)
     wh = delta_sigma_taylor(eps, mat, rho_0) if (eps > 0 or rho_0 > 0) else 0.0
     ppt, mech = delta_sigma_ppt(r_ppt_nm, f_ppt, gamma_apb, mat, A_ppt)
     return {
         'sigma_y': base + ss + wh + ppt,
         'sigma_base': base,
+        'sigma_base_branch': base_branch,
         'delta_ss': ss,
         'delta_wh': wh,
         'delta_ppt': ppt,
