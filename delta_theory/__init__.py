@@ -66,9 +66,9 @@ from .material import (
 )
 
 # ==============================================================================
-# Core: Yield + Fatigue (v7.0)
+# Core: Yield + Fatigue (v6.9)
 # ==============================================================================
-from .unified_yield_fatigue_v7_0 import (
+from .unified_yield_fatigue_v6_9 import (
     # Yield stress
     calc_sigma_y,
     sigma_base_delta,
@@ -176,7 +176,7 @@ __all__ = [
     "STRUCTURE_PRESETS",
     "MaterialGPU",
     
-    # === v7.0 Yield + Fatigue ===
+    # === v6.9 Yield + Fatigue ===
     "calc_sigma_y",
     "sigma_base_delta",
     "delta_sigma_ss",
