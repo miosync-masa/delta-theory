@@ -694,6 +694,9 @@ def cmd_point(args: argparse.Namespace) -> None:
             f_ppt=args.f_ppt,
             gamma_apb=args.gamma_apb,
             A_ppt=args.A_ppt,
+            enable_peierls=args.enable_peierls,
+            peierls_tau_P0_MPa=args.tau_P0,
+            peierls_dG0_eV=args.dG0,
         )
         sigma_y = y['sigma_y']
 
@@ -751,6 +754,9 @@ def cmd_point(args: argparse.Namespace) -> None:
     print(f"  τ_y      = {diag['tau_y']:.2f} MPa")
     print(f"  σ_y(c)   = {diag['sigma_y_compression']:.2f} MPa")
     print(f"  Yield(mode) = {y_mode:.2f} MPa")
+    print(f"  σ_base   = {y['sigma_base']:.2f} MPa  [{y['sigma_base_branch']}]")
+
+  
 
     if out is None:
         return
@@ -802,6 +808,9 @@ def cmd_calibrate(args: argparse.Namespace) -> None:
             f_ppt=args.f_ppt,
             gamma_apb=args.gamma_apb,
             A_ppt=args.A_ppt,
+            enable_peierls=args.enable_peierls,
+            peierls_tau_P0_MPa=args.tau_P0,
+            peierls_dG0_eV=args.dG0,
         )
         sigma_y = y['sigma_y']
 
@@ -877,6 +886,9 @@ def cmd_sn(args: argparse.Namespace) -> None:
             f_ppt=args.f_ppt,
             gamma_apb=args.gamma_apb,
             A_ppt=args.A_ppt,
+            enable_peierls=args.enable_peierls,
+            peierls_tau_P0_MPa=args.tau_P0,
+            peierls_dG0_eV=args.dG0,
         )
         sigma_y = y['sigma_y']
 
@@ -951,6 +963,10 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument('--C_class', type=float, default=C_CLASS_DEFAULT)
         sp.add_argument('--bcc_w110', type=float, default=DEFAULT_BCC_W110)
         sp.add_argument('--apply_C_class_hcp', action='store_true')
+        # branch factors
+        sp.add_argument('--enable_peierls', action='store_true', help='Enable BCC Peierls low-T hardening')
+        sp.add_argument('--tau_P0', type=float, default=0.0, help='Peierls stress at 0K [MPa]')
+        sp.add_argument('--dG0', type=float, default=0.0, help='Activation barrier ΔG0 [eV]')
 
     def add_fatigue(sp: argparse.ArgumentParser):
         sp.add_argument('--mode', choices=['tensile', 'compression', 'shear'], default='tensile')
