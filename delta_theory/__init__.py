@@ -6,10 +6,10 @@ Unified materials science prediction based on geometric first principles.
 "Nature is Geometry" - All material properties emerge from crystal structure.
 
 Modules:
-    - unified_yield_fatigue_v6_9: Main yield + fatigue model (v6.9b)
+    - material: Unified material database (v7.0 — geometric factorization)
+    - unified_yield_fatigue_v7_0: Main yield + fatigue model (v7.0)
     - unified_flc_v8_1: FLC prediction with v6.9 integration (v8.1)
     - dbt_unified: Ductile-Brittle Transition Temperature prediction
-    - materials: Material database
     - fatigue_redis_api: FatigueData-AM2022 Redis API (optional)
     - banners: ASCII Art banners (random selection)
 
@@ -17,10 +17,13 @@ Version History:
     v5.0   - Yield stress from δ-theory (f_d, E_bond, crystal geometry)
     v6.9b  - Unified yield + fatigue with multiaxial (τ/σ, R)
     v6.10  - Universal fatigue validation (2472 points, 5 AM materials)
+    v7.0   - Geometric factorization: f_d → (b/d)² × f_d_elec
+             Material database centralized in material.py
     v7.2   - FLC from free volume consumption
     v8.0   - Forming-Fatigue integration (η → r_th_eff)
     v8.1   - FLC 7-mode discrete formulation + v6.9 integration
            - "Nature is Geometry" - ε₁ = |V|_eff × C_j / R_j
+    v8.2   - material.py as single source of truth for all modules
 
 Example:
     >>> from delta_theory import calc_sigma_y, MATERIALS
@@ -41,13 +44,31 @@ Example:
 from .banners import show_banner, get_random_banner, BANNERS
 
 # ==============================================================================
-# Core: Yield + Fatigue (v6.9b)
+# Material Database (v7.0 — Single Source of Truth)
 # ==============================================================================
-from .unified_yield_fatigue_v6_9 import (
-    # Material dataclass
+from .material import (
+    # Core
     Material,
     MATERIALS,
+    BD_RATIO_SQ,
     
+    # Lookup
+    get_material,
+    list_materials,
+    list_by_structure,
+    
+    # Structure presets
+    StructurePreset,
+    STRUCTURE_PRESETS,
+    
+    # Backward compat
+    MaterialGPU,
+)
+
+# ==============================================================================
+# Core: Yield + Fatigue (v7.0)
+# ==============================================================================
+from .unified_yield_fatigue_v7_0 import (
     # Yield stress
     calc_sigma_y,
     sigma_base_delta,
@@ -64,8 +85,6 @@ from .unified_yield_fatigue_v6_9 import (
     yield_by_mode,
     tau_over_sigma,
     sigma_c_over_sigma_t,
-    T_TWIN,
-    R_COMP,
     C_CLASS_DEFAULT,
 )
 
@@ -127,14 +146,6 @@ except ImportError:
     MATERIAL_FE = None
 
 # ==============================================================================
-# Materials Database (GPU-accelerated)
-# ==============================================================================
-try:
-    from .materials import MaterialGPU
-except ImportError:
-    MaterialGPU = None
-
-# ==============================================================================
 # Optional: FatigueDB (requires upstash-redis)
 # ==============================================================================
 try:
@@ -145,7 +156,7 @@ except ImportError:
 # ==============================================================================
 # Package Metadata
 # ==============================================================================
-__version__ = "8.1.0"
+__version__ = "8.2.0"
 __author__ = "Masamichi Iizumi & Tamaki"
 
 __all__ = [
@@ -154,9 +165,18 @@ __all__ = [
     "get_random_banner",
     "BANNERS",
     
-    # === v6.9 Yield + Fatigue ===
+    # === Material Database (v7.0) ===
     "Material",
     "MATERIALS",
+    "BD_RATIO_SQ",
+    "get_material",
+    "list_materials",
+    "list_by_structure",
+    "StructurePreset",
+    "STRUCTURE_PRESETS",
+    "MaterialGPU",
+    
+    # === v7.0 Yield + Fatigue ===
     "calc_sigma_y",
     "sigma_base_delta",
     "delta_sigma_ss",
@@ -168,8 +188,6 @@ __all__ = [
     "tau_over_sigma",
     "sigma_c_over_sigma_t",
     "FATIGUE_CLASS_PRESET",
-    "T_TWIN",
-    "R_COMP",
     "C_CLASS_DEFAULT",
     
     # === v8.1 FLC ===
@@ -202,9 +220,6 @@ __all__ = [
     "SegregationView",
     "MATERIAL_FE",
     
-    # === Materials ===
-    "MaterialGPU",
-    
     # === FatigueDB (optional) ===
     "FatigueDB",
     
@@ -222,11 +237,16 @@ def info():
     print(f"""
 ╔══════════════════════════════════════════════════════════════════════╗
 ║  δ-Theory Core Library v{__version__}                                      ║
-║  "Nature is Geometry"  ─  ε₁ = |V|_eff × C_j / R_j                   ║
+║  "Nature is Geometry"                                                ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║                                                                      ║
-║  YIELD STRESS (v6.9b)                                                ║
-║    σ_y = f(crystal_structure, f_d, E_bond, T)                        ║
+║  YIELD STRESS (v7.0 — geometric factorization)                       ║
+║    σ_y = (E_bond × α × (b/d)² × f_d_elec / V_act) × (δ_L × HP/2πM)║
+║                                                                      ║
+║    Pure geometry:  α, (b/d)²=3/2, V_act=b³, HP, M, 2π               ║
+║    Experimental:   E_bond (sublimation), δ_L (Debye-Waller)          ║
+║    Electronic:     f_d_elec only (Fe=1.0 as reference)               ║
+║                                                                      ║
 ║    Mean error: 2.6% across 10 metals (ZERO fitting parameters)       ║
 ║    >>> calc_sigma_y(MATERIALS['Fe'])                                 ║
 ║                                                                      ║
@@ -250,10 +270,10 @@ def info():
 ║    >>> DBTUnified().predict_dbtt(material, grain_size)               ║
 ║                                                                      ║
 ╠══════════════════════════════════════════════════════════════════════╣
-║  Core Equations:                                                     ║
+║  Core Principle:                                                     ║
 ║    Λ = K / |V|_eff    (Λ > 1 → yield/fracture)                      ║
-║    τ/σ = (α_s/α_t) × C_class × T_twin × A_texture                   ║
-║    FLC: 1-point calibration from FLC₀ → all 7 modes                  ║
+║    "The same geometry governs materials and particles"               ║
+║    Materials: (b/d)² = 3/2    Particles: cos30° = √3/2              ║
 ║                                                                      ║
 ║  Authors: Masamichi Iizumi & Tamaki                                  ║
 ╚══════════════════════════════════════════════════════════════════════╝
