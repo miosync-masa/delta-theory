@@ -215,7 +215,7 @@ class TestUnifiedYieldFatigue:
 
     def test_import(self):
         """インポートテスト"""
-        from delta_theory.unified_yield_fatigue_v7_0 import (
+        from delta_theory.unified_yield_fatigue_v6_9 import (
             FATIGUE_CLASS_PRESET,
             MATERIALS,
         )
