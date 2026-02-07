@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Literal, Optional, Tuple
 import random
 import numpy as np
-from .banners import show_banner　
+from .banners import show_banner
 
 # Try to import from delta_theory package, fallback to local
 try:
