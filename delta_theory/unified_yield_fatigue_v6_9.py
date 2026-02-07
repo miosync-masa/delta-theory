@@ -1000,11 +1000,6 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 def main() -> None:
-    parser = build_parser()
-    args = parser.parse_args()
-    args.func(args)
-
-def main() -> None:
     # 起動時にランダムで表示
     show_banner()  # ← これだけ！
     parser = build_parser()
