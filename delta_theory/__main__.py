@@ -20,7 +20,7 @@ QUICK_REFERENCE = """
     ██╔══╝  ██║   ██║██╔══██╗██╔══╝  ██╔═██╗ ██╔══██╗╚═╝
     ███████╗╚██████╔╝██║  ██║███████╗██║  ██╗██║  ██║██╗
     ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝
-                    δ-Theory v10.0.0
+                    δ-Theory v10.0.2
                   "Nature is Geometry"
                   
 ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -522,7 +522,7 @@ Examples:
 
 def cmd_ssoc(args):
     """Quick SSOC f_de inspection."""
-    from .material import get_material, MATERIAL_NAMES
+    from .material import get_material, list_materials
     from .ssoc import calc_f_de, calc_f_de_detail, sigma_base_v10
     
     if len(args) == 0 or args[0] in ['-h', '--help']:
@@ -541,12 +541,14 @@ Examples:
 """)
         return
     
+    all_names = list_materials()
+    
     if args[0].lower() == 'all':
-        print("\nSSOC f_de — All 25 Metals (T=300K)")
+        print(f"\nSSOC f_de — All {len(all_names)} Metals (T=300K)")
         print("=" * 65)
         print(f"{'Metal':<6} {'Struct':<5} {'f_de':>8} {'σ_base':>10} {'Detail'}")
         print("-" * 65)
-        for name in MATERIAL_NAMES:
+        for name in all_names:
             mat = get_material(name)
             fde = calc_f_de(mat)
             sigma = sigma_base_v10(mat, T_K=300.0)
@@ -560,7 +562,7 @@ Examples:
             mat = get_material(name)
         except (KeyError, ValueError):
             print(f"Error: Unknown metal '{name}'")
-            print(f"Available: {', '.join(MATERIAL_NAMES)}")
+            print(f"Available: {', '.join(all_names)}")
             return
         
         fde = calc_f_de(mat)
