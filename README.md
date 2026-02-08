@@ -109,8 +109,8 @@ delta-theory/
 ├── delta_theory/                      # 🔧 Main package
 │   ├── material.py                      # Data layer — 25 metals + SSOC params
 │   ├── ssoc.py                          # ★ Calculation layer — f_de (NEW!)
-│   ├── tau_sigma_v4_1.py                # τ/σ and R_comp from α-coefficients
-│   ├── unified_yield_fatigue_v6_9.py    # Application layer — σ_y → S-N
+│   ├── unified_yield_fatigue_v10.py      # Application layer — σ_y, τ/σ, S-N
+│   ├── unified_yield_fatigue_v6_9.py    # ← backward compat shim (re-exports v10)
 │   ├── unified_flc_v8_1.py             # FLC 7-mode discrete
 │   ├── dbt_unified.py                  # DBT/DBTT prediction model
 │   ├── lindemann.py                    # Iizumi-Lindemann melting law
@@ -135,10 +135,9 @@ delta-theory/
 #### Architecture (Multi-Layer Design)
 
 ```
-material.py        → Data layer      (25 metals, SSOC + crystal params)
-ssoc.py            → σ_y calculation  (f_de: PCC/SCC 3-factor model)
-tau_sigma_v4_1.py  → τ/σ calculation  (α-coefficients, R_comp)
-unified            → Application layer (σ_y + τ/σ → S-N, FLC integration)
+material.py                    → Data layer      (25 metals, SSOC + crystal params)
+ssoc.py                        → σ_y calculation  (f_de: PCC/SCC 3-factor model)
+unified_yield_fatigue_v10.py    → Application layer (σ_y + τ/σ + R_comp → S-N, FLC)
 ```
 
 #### Unified Equation
@@ -252,19 +251,18 @@ Driven by twinning asymmetry in HCP metals:
 | Zn | 1.2 | Reverse twinning effect |
 
 ```python
-from delta_theory import calc_alpha_values, calibrate_C_class
+from delta_theory import tau_over_sigma, sigma_c_over_sigma_t, C_CLASS_DEFAULT, MATERIALS
 
-# Geometric α coefficients
-bcc = calc_alpha_values('BCC')
-print(f"BCC α_s/α_t = {bcc['ratio']:.4f}")
-print(f"  {110}: {bcc['ratio_110']:.4f}, {112}: {bcc['ratio_112']:.4f}")
+# τ/σ prediction (uses α-coefficients internally)
+fe = MATERIALS['Fe']
+print(f"Fe τ/σ = {tau_over_sigma(fe):.4f}")       # → 0.565
+print(f"Fe R_comp = {sigma_c_over_sigma_t(fe)}")   # → 1.0
+print(f"C_class = {C_CLASS_DEFAULT:.4f}")           # Cu-calibrated
 
-# C_class from Cu calibration
-C = calibrate_C_class()  # ≈ 1.384
-
-# τ/σ prediction
-from delta_theory import predict_tau_sigma
-print(f"Fe τ/σ = {predict_tau_sigma('Fe', C):.4f}")  # → 0.565
+# Yield by mode
+from delta_theory import yield_by_mode
+sigma_shear, info = yield_by_mode(fe, sigma_y_tension_MPa=150.0, mode='shear')
+print(f"Fe τ_y = {sigma_shear:.1f} MPa")
 ```
 
 ---
@@ -379,14 +377,14 @@ print_validation_report(results)
 
 ### Yield & Fatigue (v10.0)
 ```bash
-# Single point calculation (now uses SSOC)
-python -m delta_theory.unified_yield_fatigue_v6_9 point --metal Fe --sigma_a 150
+# Single point calculation (SSOC)
+python -m delta_theory.unified_yield_fatigue_v10 point --metal Fe --sigma_a 150
 
 # Generate S-N curve
-python -m delta_theory.unified_yield_fatigue_v6_9 sn --metal Fe --sigma_min 100 --sigma_max 300
+python -m delta_theory.unified_yield_fatigue_v10 sn --metal Fe --sigma_min 100 --sigma_max 300
 
 # Calibrate A_ext
-python -m delta_theory.unified_yield_fatigue_v6_9 calibrate --metal Fe --sigma_a 244 --N_fail 7.25e7
+python -m delta_theory.unified_yield_fatigue_v10 calibrate --metal Fe --sigma_a 244 --N_fail 7.25e7
 ```
 
 ### FLC
