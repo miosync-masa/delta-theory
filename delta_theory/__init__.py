@@ -6,8 +6,9 @@ Unified materials science prediction based on geometric first principles.
 "Nature is Geometry" - All material properties emerge from crystal structure.
 
 Modules:
-    - material: Unified material database (v7.0 — geometric factorization)
-    - unified_yield_fatigue_v7_0: Main yield + fatigue model (v7.0)
+    - material: Unified material database (v10.0 — SSOC parameters)
+    - ssoc: Structure-Selective Orbital Coupling calculation layer (v10.0)
+    - unified_yield_fatigue_v10: Main yield + fatigue model (v10.0 SSOC)
     - unified_flc_v8_1: FLC prediction with v6.9 integration (v8.1)
     - dbt_unified: Ductile-Brittle Transition Temperature prediction
     - fatigue_redis_api: FatigueData-AM2022 Redis API (optional)
@@ -24,10 +25,20 @@ Version History:
     v8.1   - FLC 7-mode discrete formulation + v6.9 integration
            - "Nature is Geometry" - ε₁ = |V|_eff × C_j / R_j
     v8.2   - material.py as single source of truth for all modules
+    v10.0  - SSOC (Structure-Selective Orbital Coupling)
+           - δ_L-free formulation: √(E_coh·k_B·T_m)
+           - 3-layer architecture: material / ssoc / application
+           - f_de: FCC-PCC, BCC-SCC, HCP-PCC
+           - Unified M_SSOC=3.0 (structure差をf_deが吸収)
+           - 25 metals validated, MAE=3.2%
 
 Example:
     >>> from delta_theory import calc_sigma_y, MATERIALS
     >>> sigma_y = calc_sigma_y(MATERIALS['Fe'])
+    
+    >>> from delta_theory import calc_f_de, sigma_base_v10
+    >>> f_de = calc_f_de(MATERIALS['Fe'])
+    >>> sigma = sigma_base_v10(MATERIALS['Fe'])
     
     >>> from delta_theory import FLCPredictor, predict_flc
     >>> flc = FLCPredictor()
@@ -44,13 +55,14 @@ Example:
 from .banners import show_banner, get_random_banner, BANNERS
 
 # ==============================================================================
-# Material Database (v7.0 — Single Source of Truth)
+# Material Database (v10.0 — SSOC parameters added)
 # ==============================================================================
 from .material import (
     # Core
     Material,
     MATERIALS,
     BD_RATIO_SQ,
+    COEFF_V10,
     
     # Lookup
     get_material,
@@ -66,9 +78,46 @@ from .material import (
 )
 
 # ==============================================================================
-# Core: Yield + Fatigue (v6.9)
+# SSOC: Structure-Selective Orbital Coupling (v10.0 — NEW)
 # ==============================================================================
-from .unified_yield_fatigue_v6_9 import (
+from .ssoc import (
+    # Core calculation
+    calc_f_de,
+    calc_f_de_detail,
+    sigma_base_v10,
+    sigma_base_v10_with_fde,
+    
+    # FCC PCC
+    fcc_f_de,
+    fcc_gate,
+    fcc_f_mu,
+    fcc_f_shell,
+    fcc_f_core,
+    
+    # BCC SCC
+    bcc_f_de,
+    bcc_f_jt,
+    bcc_f_5d,
+    bcc_f_lattice,
+    
+    # HCP PCC
+    hcp_f_de,
+    hcp_f_aniso,
+    hcp_f_ca,
+    hcp_f_5d as hcp_f_5d_corr,
+    hcp_f_elec,
+    
+    # Constants
+    P_DIM,
+    M_SSOC,
+    FCC_MU_REF,
+    FCC_GAMMA_REF,
+)
+
+# ==============================================================================
+# Core: Yield + Fatigue (v10.0 SSOC Edition)
+# ==============================================================================
+from .unified_yield_fatigue_v10 import (
     # Yield stress
     calc_sigma_y,
     sigma_base_delta,
@@ -163,7 +212,7 @@ except ImportError:
 # ==============================================================================
 # Package Metadata
 # ==============================================================================
-__version__ = "8.4.0"
+__version__ = "10.0.0"
 __author__ = "Masamichi Iizumi & Tamaki"
 
 __all__ = [
@@ -172,10 +221,11 @@ __all__ = [
     "get_random_banner",
     "BANNERS",
     
-    # === Material Database (v7.0) ===
+    # === Material Database (v10.0) ===
     "Material",
     "MATERIALS",
     "BD_RATIO_SQ",
+    "COEFF_V10",
     "get_material",
     "list_materials",
     "list_by_structure",
@@ -183,7 +233,31 @@ __all__ = [
     "STRUCTURE_PRESETS",
     "MaterialGPU",
     
-    # === v6.9 Yield + Fatigue ===
+    # === SSOC (v10.0 — NEW) ===
+    "calc_f_de",
+    "calc_f_de_detail",
+    "sigma_base_v10",
+    "sigma_base_v10_with_fde",
+    "fcc_f_de",
+    "fcc_gate",
+    "fcc_f_mu",
+    "fcc_f_shell",
+    "fcc_f_core",
+    "bcc_f_de",
+    "bcc_f_jt",
+    "bcc_f_5d",
+    "bcc_f_lattice",
+    "hcp_f_de",
+    "hcp_f_aniso",
+    "hcp_f_ca",
+    "hcp_f_5d_corr",
+    "hcp_f_elec",
+    "P_DIM",
+    "M_SSOC",
+    "FCC_MU_REF",
+    "FCC_GAMMA_REF",
+    
+    # === v10.0 Yield + Fatigue ===
     "calc_sigma_y",
     "sigma_base_delta",
     "delta_sigma_ss",
@@ -227,7 +301,7 @@ __all__ = [
     "SegregationView",
     "MATERIAL_FE",
 
-    #lindemann
+    # === Lindemann ===
     "iizumi_lindemann",
     "conventional_lindemann", 
     "get_c_geo",
@@ -259,19 +333,31 @@ def info():
     show_banner()  # 🎲 Random banner every time!
     print(f"""
 ╔══════════════════════════════════════════════════════════════════════╗
-║  δ-Theory Core Library v{__version__}                                      ║
+║  δ-Theory Core Library v{__version__}                                     ║
 ║  "Nature is Geometry"                                                ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║                                                                      ║
-║  YIELD STRESS (v7.0 — geometric factorization)                       ║
-║    σ_y = (E_bond × α × (b/d)² × f_d_elec / V_act) × (δ_L × HP/2πM)║
+║  YIELD STRESS (v10.0 — SSOC δ_L-free)                               ║
+║    σ_y = (8√5/5πMZ) × α₀ × (b/d)² × f_de × √(E·k_BT_m) / V × HP  ║
 ║                                                                      ║
-║    Pure geometry:  α, (b/d)²=3/2, V_act=b³, HP, M, 2π               ║
-║    Experimental:   E_bond (sublimation), δ_L (Debye-Waller)          ║
-║    Electronic:     f_d_elec only (Fe=1.0 as reference)               ║
+║    Pure geometry:  α₀, (b/d)²=3/2, V_act=b³, HP, 8√5/5π            ║
+║    Experimental:   E_coh (cohesive), T_m (melting point)             ║
+║    SSOC:           f_de (structure-selective orbital coupling)        ║
 ║                                                                      ║
-║    Mean error: 2.6% across 10 metals (ZERO fitting parameters)       ║
+║    3-Layer Architecture:                                             ║
+║      material.py  → Data layer  (SSOC parameters)                   ║
+║      ssoc.py      → Calc layer  (f_de + σ_base)                     ║
+║      unified_*    → App layer   (σ_y → S-N → FLC)                   ║
+║                                                                      ║
+║    SSOC Channels:                                                    ║
+║      FCC — PCC: f_de = (μ/μ_ref)^(2/3·g_d) × f_shell × f_core      ║
+║      BCC — SCC: f_de = f_JT × f_5d × f_lat  (d⁴ anomaly)           ║
+║      HCP — PCC: f_de = f_elec × f_aniso(R) × f_ca × f_5d           ║
+║                                                                      ║
+║    Mean error: 3.2% across 25 metals (ZERO fitting parameters)       ║
 ║    >>> calc_sigma_y(MATERIALS['Fe'])                                 ║
+║    >>> calc_f_de(MATERIALS['Fe'])                                    ║
+║    >>> sigma_base_v10(MATERIALS['Fe'])                               ║
 ║                                                                      ║
 ║  FATIGUE LIFE (v6.10)                                                ║
 ║    N = f(r, r_th, structure)  |  r_th: BCC=0.65, FCC=0.02, HCP=0.20 ║
