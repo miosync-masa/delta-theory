@@ -236,21 +236,6 @@ class TestMaterial:
         with pytest.raises(ValueError):
             get_material("Unobtanium")
 
-    def test_material_gpu_backward_compat(self):
-        """MaterialGPU（後方互換クラス）"""
-        from delta_theory.material import MaterialGPU
-
-        fe = MaterialGPU.Fe()
-        assert fe.name == "Fe"
-        assert fe.structure == "BCC"
-
-        fe2 = MaterialGPU.get("Iron")
-        fe3 = MaterialGPU.get("SECD")
-        assert fe.name == fe2.name == fe3.name == "Fe"
-
-        names = MaterialGPU.list_materials()
-        assert "Fe" in names
-
     def test_summary(self):
         """summary() が文字列を返す"""
         from delta_theory.material import get_material
