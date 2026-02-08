@@ -1,35 +1,27 @@
 #!/usr/bin/env python3
-"""Unified Yield + δ-fatigue (v7.0)
+"""Unified Yield + δ-fatigue (v10.0 SSOC Edition)
 
-- Yield model: v7.0 — geometric factorization
-  σ_y = (E_bond × α × (b/d)² × f_d_elec / V_act) × (δ_L × HP / 2πM)
+- Yield model: v10.0 — SSOC (Structure-Selective Orbital Coupling)
+  σ_y = (8√5/5πMZ) × α₀ × (b/d)² × f_de × √(E_coh·k_B·T_m) / V_act × HP
 
-  Key change from v6.9:
-    Old: f_d (combined geometric + electronic factor)
-    New: BD_RATIO_SQ × f_d_elec (separated)
-      - BD_RATIO_SQ = (b/d)² = 3/2 — pure crystallographic constant
-        (d/b = √(2/3) is universal across BCC, FCC, HCP)
-      - f_d_elec — electronic directionality factor (d-electron contribution only)
+  Key change from v7.0:
+    Old: σ_y ∝ E_bond × δ_L × f_d_elec         (δ_L依存)
+    New: σ_y ∝ √(E_coh·k_B·T_m) × f_de(SSOC)   (δ_Lフリー)
 
-  Note on self-consistency:
-    E_bond (sublimation heat) and δ_L (Debye-Waller) are BOTH measured on
-    real polycrystals with defects.  Their defect effects partially cancel
-    (E_bond_real < E_bond_ideal, δ_L_real > δ_L_ideal), making the formula
-    self-consistent without a separate polycrystal correction factor α_c.
+  f_de calculation delegated to ssoc.py:
+    FCC — PCC: f_de = f_μ × f_shell × f_core
+    BCC — SCC: f_de = f_JT × f_5d × f_lat
+    HCP — PCC: f_de = f_elec × f_aniso × f_ca × f_5d
 
-  σ_y = σ_base(δ) + Δσ_ss(c) + Δσ_ρ(ε) + Δσ_ppt(r,f)
+  Architecture:
+    material.py  → データ層（SSОCパラメータ）
+    ssoc.py      → 計算層（f_de + σ_base）
+    this file    → 応用層（σ_y → S-N統合）
 
-- Fatigue model: v6.8 δ-fatigue damage
-  dD/dN = 0 (r<=r_th) else A_eff * (r-r_th)^n
-  with r = (amplitude)/(yield in the same loading mode)
-  and failure when Λ(D)=D/(1-D) reaches 1 (i.e., D>=0.5) by default.
+  σ_y = σ_base(SSOC) + Δσ_ss(c) + Δσ_ρ(ε) + Δσ_ppt(r,f)
 
-- Added from v4.1 (was missing in original v6.9 integration)
-  τ/σ = (α_s/α_t) * C_class * T_twin * A_texture
-  σ_c/σ_t = R_comp  (twinning/asymmetry)
-
-This lets v7.0 operate not only with tensile amplitude σ_a, but also
-with shear amplitude τ_a or compression amplitude σ_a^c.
+- Fatigue model: v6.8 δ-fatigue damage (unchanged)
+- τ/σ model: v4.1 (unchanged)
 """
 
 from __future__ import annotations
@@ -42,21 +34,17 @@ import random
 import numpy as np
 from .banners import show_banner
 from .material import Material, MATERIALS, BD_RATIO_SQ, get_material, list_materials
+from .ssoc import (
+    calc_f_de, calc_f_de_detail,
+    sigma_base_v10, sigma_base_v10_with_fde,
+)
 
 # ==============================================================================
-# Optional import: DBT/DBTT unified model (separate module)
-# ------------------------------------------------------------------------------
-# Place dbt_unified.py in the same folder as this file.
-# Then you can do:
-#   from unified_yield_fatigue_v6_9b_tau_classes import DBTUnified
-#   model = DBTUnified()
-#
-# The import is optional so that this module remains usable even if dbt_unified.py
-# is not present in your runtime environment.
+# Optional import: DBT/DBTT unified model
+# ==============================================================================
 try:
     from .dbt_unified import DBTUnified, DBTCore, Material as DBTMaterial, MATERIAL_FE
 except Exception:
-  
     DBTUnified = None
     DBTCore = None
     DBTMaterial = None
@@ -66,16 +54,14 @@ except Exception:
 # Physical constants
 # ==============================================================================
 PI = np.pi
-ELECTRON_CHARGE_J = 1.602176634e-19  # 1 eV in Joule
-BOLTZMANN_J = 1.380649e-23  # Boltzmann constant [J/K]
+ELECTRON_CHARGE_J = 1.602176634e-19
+BOLTZMANN_J = 1.380649e-23
 M_TAYLOR = 3.0
 ALPHA_TAYLOR = 0.3
 
 # ==============================================================================
-# v5.0 δ-yield constants
+# Solid solution strengthening
 # ==============================================================================
-# BD_RATIO_SQ = (b/d)^2 = 3/2 — imported from materials.py
-
 N_EXPONENT = {'interstitial': 0.90, 'substitutional': 0.95}
 
 # Work hardening presets
@@ -87,8 +73,8 @@ K_RHO = {
 # ==============================================================================
 # v4.1 τ/σ factors
 # ==============================================================================
-CU_TAU_SIGMA_TORSION = 0.565  # Cu torsion calibration point
-DEFAULT_BCC_W110 = 0.0        # {112} dominant
+CU_TAU_SIGMA_TORSION = 0.565
+DEFAULT_BCC_W110 = 0.0
 
 T_REF = {
     'BCC': np.array([1, 0, 0], dtype=float),
@@ -96,62 +82,24 @@ T_REF = {
     'HCP': np.array([1, 0, 0], dtype=float),
 }
 
-# ==============================================================================
-# Material database — imported from materials.py
-# ==============================================================================
-# Material class, MATERIALS dict, BD_RATIO_SQ, get_material(), list_materials()
-# are all imported from materials.py (single source of truth).
-#
-# Field name mapping (unified_v6.9 → materials.py):
-#   mat.Eb  → mat.E_bond_eV
-#   mat.dL  → mat.delta_L
-#   mat.G   → mat.G (property: E/(2(1+ν)))
-#   mat.f_d → mat.f_d (property: BD_RATIO_SQ × f_d_elec, backward compat)
-#   ALPHA_DELTA[structure] → mat.alpha0 (from StructurePreset)
-#   calc_burgers(a, st) → mat.b (property)
-# ==============================================================================
 
 # ==============================================================================
-# v5.0 yield components
+# v10.0 yield: base stress via SSOC
 # ==============================================================================
 
 def sigma_base_delta(mat: Material, T_K: float = 300.0) -> float:
-    """Base yield stress from δ-theory [MPa].
+    """Base yield stress from δ-theory [MPa] — v10.0 SSOC edition.
 
-    σ_y = (E_bond × α × (b/d)² × f_d_elec / V_act) × (δ_L × HP / 2πM)
+    σ_y = (8√5/5πMZ) × α₀ × (b/d)² × f_de × √(E_coh·k_B·T_m) / V_act × HP
 
-    Components:
-      E_bond   : cohesive energy [eV] — experimental (sublimation heat),
-                 includes real-crystal defect effects (vacancies, GBs, dislocations)
-      α        : bond-vector projection (pure geometry) — mat.alpha0
-      (b/d)²   : slip-plane geometric constant = 3/2 (BD_RATIO_SQ)
-      f_d_elec : electronic directionality factor (d-electron contribution)
-      V_act    : activation volume = b³ (pure geometry) — mat.V_act
-      δ_L      : Lindemann parameter — experimental (Debye-Waller),
-                 includes real-crystal defect effects (self-consistent with E_bond)
-      HP       : homologous pressure = 1 - T/T_m (pure geometry)
-      M        : Taylor factor (polycrystal averaging, pure geometry)
-    
-    Note: mat.E_eff already computes E_bond × α × (b/d)² × f_d_elec [J]
+    Delegates to ssoc.sigma_base_v10() for the actual calculation.
+    Function name kept as sigma_base_delta for backward compatibility.
     """
-    HP = max(0.0, 1.0 - T_K / mat.T_m)
-    sigma = (mat.E_eff / mat.V_act) * mat.delta_L * HP / (2 * PI * M_TAYLOR)
-    return sigma / 1e6
+    return sigma_base_v10(mat, T_K)
 
 
 # ==============================================================================
-# Low-temperature hardening for BCC: Peierls-Nabarro (thermally activated kink-pair)
-# ------------------------------------------------------------------------------
-# Notes (design intent):
-#   - HP=1-T/Tm captures "high-T softening" (loss of thermal margin).
-#   - BCC low-T hardening is dominated by screw-dislocation lattice friction
-#     (Peierls barrier) and is strongly thermally activated and rate-sensitive.
-#   - We keep it OPTIONAL and *class-style*: a small preset set (p,q,epsdot0)
-#     + per-material (or per-class) τ_P0 and ΔG0.
-#
-# Recommended usage:
-#   - For room-temperature engineering use: keep enable_peierls=False (default).
-#   - For DBTT / cryogenic yield: enable_peierls=True and supply params.
+# Low-temperature hardening for BCC: Peierls-Nabarro (unchanged from v7.0)
 # ==============================================================================
 
 def tau_peierls_kocks(
@@ -163,32 +111,7 @@ def tau_peierls_kocks(
     p: float = 0.5,
     q: float = 1.5,
 ) -> float:
-    """Thermally activated Peierls stress τ(T) [MPa] (Kocks-type inversion).
-
-    Strain-rate form:
-        epsdot = epsdot0 * exp( -ΔG(τ) / (kT) )
-    with:
-        ΔG(τ) = ΔG0 * [1 - (τ/τ_P0)^p]^q
-
-    Solving for τ gives:
-        τ(T) = τ_P0 * [1 - X^(1/q)]^(1/p)
-        X = (kT/ΔG0) * ln(epsdot0/epsdot)
-
-    Clipped so that:
-        X >= 1 -> τ = 0
-        T -> 0 -> τ -> τ_P0
-
-    Args:
-        T_K: temperature [K]
-        tau_P0_MPa: Peierls stress at 0 K [MPa]
-        dG0_eV: activation barrier ΔG0 [eV]
-        epsdot: plastic strain rate [1/s]
-        epsdot0: attempt/reference rate [1/s]
-        p,q: barrier shape exponents (class presets)
-
-    Returns:
-        τ(T) [MPa]
-    """
+    """Thermally activated Peierls stress τ(T) [MPa] (Kocks-type inversion)."""
     if tau_P0_MPa <= 0 or dG0_eV <= 0:
         return 0.0
     if T_K <= 1e-9:
@@ -215,14 +138,11 @@ def sigma_peierls_bcc(
     p: float = 0.5,
     q: float = 1.5,
 ) -> float:
-    """Macroscopic Peierls-controlled yield level [MPa] for BCC (polycrystal).
-
-    We compute τ(T) and convert by Taylor factor:
-        σ_P(T) = M * τ(T)
-    """
+    """Macroscopic Peierls-controlled yield level [MPa] for BCC."""
     if mat.structure != 'BCC':
         return 0.0
-    tau = tau_peierls_kocks(T_K, tau_P0_MPa, dG0_eV, epsdot=epsdot, epsdot0=epsdot0, p=p, q=q)
+    tau = tau_peierls_kocks(T_K, tau_P0_MPa, dG0_eV,
+                            epsdot=epsdot, epsdot0=epsdot0, p=p, q=q)
     return M_TAYLOR * tau
 
 
@@ -237,32 +157,29 @@ def sigma_base_unified(
     peierls_p: float = 0.5,
     peierls_q: float = 1.5,
 ) -> Tuple[float, str]:
-    """Unified base yield with optional low-T Peierls branch.
-
-    Returns:
-        (sigma_base_MPa, branch_name)
-    """
+    """Unified base yield with optional low-T Peierls branch."""
     s_delta = sigma_base_delta(mat, T_K)
 
     if not enable_peierls or mat.structure != 'BCC':
-        return s_delta, 'delta(HP-only)'
+        return s_delta, 'SSOC(v10.0)'
 
     s_p = sigma_peierls_bcc(
-        mat,
-        T_K=T_K,
+        mat, T_K=T_K,
         tau_P0_MPa=peierls_tau_P0_MPa,
         dG0_eV=peierls_dG0_eV,
         epsdot=peierls_epsdot,
         epsdot0=peierls_epsdot0,
-        p=peierls_p,
-        q=peierls_q,
+        p=peierls_p, q=peierls_q,
     )
 
-    # Envelope: whichever mechanism requires higher stress dominates.
     if s_p > s_delta:
         return s_p, 'Peierls(kink-pair)'
-    return s_delta, 'delta(HP-only)'
+    return s_delta, 'SSOC(v10.0)'
 
+
+# ==============================================================================
+# Strengthening mechanisms (unchanged)
+# ==============================================================================
 
 def delta_sigma_ss(c_wt_percent: float, k: float,
                    solute_type: Optional[Literal['interstitial', 'substitutional']]) -> float:
@@ -337,31 +254,35 @@ def calc_sigma_y(
     peierls_q: float = 1.5,
 ) -> Dict[str, float | str]:
     base, base_branch = sigma_base_unified(
-        mat,
-        T_K=T_K,
+        mat, T_K=T_K,
         enable_peierls=enable_peierls,
         peierls_tau_P0_MPa=peierls_tau_P0_MPa,
         peierls_dG0_eV=peierls_dG0_eV,
         peierls_epsdot=peierls_epsdot,
         peierls_epsdot0=peierls_epsdot0,
-        peierls_p=peierls_p,
-        peierls_q=peierls_q,
+        peierls_p=peierls_p, peierls_q=peierls_q,
     )
     ss = delta_sigma_ss(c_wt_percent, k_ss, solute_type)
     wh = delta_sigma_taylor(eps, mat, rho_0) if (eps > 0 or rho_0 > 0) else 0.0
     ppt, mech = delta_sigma_ppt(r_ppt_nm, f_ppt, gamma_apb, mat, A_ppt)
+    
+    # SSOC f_de diagnostic
+    f_de = calc_f_de(mat)
+    
     return {
         'sigma_y': base + ss + wh + ppt,
         'sigma_base': base,
         'sigma_base_branch': base_branch,
+        'f_de': f_de,
         'delta_ss': ss,
         'delta_wh': wh,
         'delta_ppt': ppt,
         'ppt_mechanism': mech,
     }
 
+
 # ==============================================================================
-# v4.1: α_s/α_t and τ/σ
+# v4.1: α_s/α_t and τ/σ (unchanged)
 # ==============================================================================
 
 def get_bond_vectors(structure: str, c_a_ratio: float = 1.633):
@@ -379,11 +300,9 @@ def get_bond_vectors(structure: str, c_a_ratio: float = 1.633):
                 bonds.append(np.array([i, 0, j], dtype=float) / np.sqrt(2))
                 bonds.append(np.array([0, i, j], dtype=float) / np.sqrt(2))
     elif structure == 'HCP':
-        # basal-plane
         for i in range(6):
             angle = i * PI / 3
             bonds.append(np.array([np.cos(angle), np.sin(angle), 0.0]))
-        # out-of-plane
         r_xy = 1.0 / np.sqrt(3)
         z = c_a_ratio / 2
         length = np.sqrt(r_xy**2 + z**2)
@@ -419,7 +338,6 @@ def get_slip_system(structure: str, variant: Optional[str] = None) -> Tuple[np.n
     if structure == 'FCC':
         return (np.array([1, 1, 1], dtype=float) / np.sqrt(3),
                 np.array([1, -1, 0], dtype=float) / np.sqrt(2))
-    # HCP: basal (simplest)
     return (np.array([0, 0, 1], dtype=float), np.array([1, 0, 0], dtype=float))
 
 
@@ -434,11 +352,9 @@ def calc_alpha_ratio(structure: str, c_a: float = 1.633, bcc_w110: float = DEFAU
         a112 = calc_alpha_shear(bonds, n112, s112)
         alpha_s = bcc_w110 * a110 + (1.0 - bcc_w110) * a112
         return {
-            'alpha_t': alpha_t,
-            'alpha_s': alpha_s,
+            'alpha_t': alpha_t, 'alpha_s': alpha_s,
             'ratio': alpha_s / alpha_t,
-            'ratio_110': a110 / alpha_t,
-            'ratio_112': a112 / alpha_t,
+            'ratio_110': a110 / alpha_t, 'ratio_112': a112 / alpha_t,
         }
 
     n, s = get_slip_system(structure)
@@ -475,7 +391,6 @@ def yield_by_mode(
     bcc_w110: float = DEFAULT_BCC_W110,
     apply_C_class_hcp: bool = False,
 ) -> Tuple[float, Dict[str, float]]:
-    """Return yield level [MPa] in the requested loading mode + diagnostics."""
     tau_sig = tau_over_sigma(mat, C_class=C_class, bcc_w110=bcc_w110, apply_C_class_hcp=apply_C_class_hcp)
     R = sigma_c_over_sigma_t(mat)
     sigma_y_comp = sigma_y_tension_MPa * R
@@ -489,15 +404,14 @@ def yield_by_mode(
         y = tau_y
 
     return y, {
-        'tau_over_sigma': tau_sig,
-        'sigma_c_over_sigma_t': R,
+        'tau_over_sigma': tau_sig, 'sigma_c_over_sigma_t': R,
         'sigma_y_tension': sigma_y_tension_MPa,
-        'sigma_y_compression': sigma_y_comp,
-        'tau_y': tau_y,
+        'sigma_y_compression': sigma_y_comp, 'tau_y': tau_y,
     }
 
+
 # ==============================================================================
-# v6.8 δ-fatigue damage model
+# v6.8 δ-fatigue damage model (unchanged)
 # ==============================================================================
 
 FATIGUE_CLASS_PRESET = {
@@ -506,23 +420,14 @@ FATIGUE_CLASS_PRESET = {
     'HCP': {'r_th': 0.20, 'n': 9.0},
 }
 
-# A_int from δ parameters (normalized to Fe)
 A_INT_DB = {
-    'Fe': 1.00,
-    'Cu': 1.41,
-    'Al': 0.71,
-    'Ni': 1.37,
-    'W':  0.85,
-    'Ti': 1.10,
-    'Mg': 0.60,
-    'Zn': 0.75,
-    'Au': 1.00,
-    'Ag': 1.00,
+    'Fe': 1.00, 'Cu': 1.41, 'Al': 0.71, 'Ni': 1.37,
+    'W':  0.85, 'Ti': 1.10, 'Mg': 0.60, 'Zn': 0.75,
+    'Au': 1.00, 'Ag': 1.00,
 }
 
 
 def lambda_from_damage(D: float) -> float:
-    """Λ(D)=D/(1-D)."""
     if D <= 0:
         return 0.0
     if D >= 1:
@@ -530,15 +435,8 @@ def lambda_from_damage(D: float) -> float:
     return D / (1.0 - D)
 
 
-def solve_N_fail(
-    r: float,
-    r_th: float,
-    n: float,
-    A_eff: float,
-    D0: float = 0.0,
-    D_fail: float = 0.5,
-) -> float:
-    """Closed-form cycles to reach D_fail for constant r."""
+def solve_N_fail(r: float, r_th: float, n: float, A_eff: float,
+                 D0: float = 0.0, D_fail: float = 0.5) -> float:
     if r <= r_th:
         return float('inf')
     if A_eff <= 0:
@@ -563,8 +461,6 @@ def fatigue_life_const_amp(
     r_th_override: float | None = None,
     n_override: float | None = None,
 ) -> Dict[str, float | str]:
-    """Fatigue life under constant amplitude for the chosen loading mode."""
-
     preset = FATIGUE_CLASS_PRESET[mat.structure]
     r_th = r_th_override if r_th_override is not None else preset['r_th']
     n = n_override if n_override is not None else preset['n']
@@ -573,34 +469,21 @@ def fatigue_life_const_amp(
     A_eff = A_int * A_ext
 
     y_mode, diag = yield_by_mode(
-        mat,
-        sigma_y_tension_MPa=sigma_y_tension_MPa,
-        mode=mode,
-        C_class=C_class,
-        bcc_w110=bcc_w110,
-        apply_C_class_hcp=apply_C_class_hcp,
+        mat, sigma_y_tension_MPa=sigma_y_tension_MPa, mode=mode,
+        C_class=C_class, bcc_w110=bcc_w110, apply_C_class_hcp=apply_C_class_hcp,
     )
 
-    # In shear mode, sigma_a_MPa is interpreted as τ_a [MPa]
     r = sigma_a_MPa / y_mode if y_mode > 0 else float('inf')
-
     N_fail = solve_N_fail(r, r_th, n, A_eff, D0=D0, D_fail=D_fail)
 
     return {
-        'mode': mode,
-        'amp_input_MPa': sigma_a_MPa,
-        'yield_mode_MPa': y_mode,
-        'r': r,
-        'r_th': r_th,
-        'n': n,
-        'A_int': A_int,
-        'A_ext': A_ext,
-        'A_eff': A_eff,
-        'D0': D0,
-        'D_fail': D_fail,
+        'mode': mode, 'amp_input_MPa': sigma_a_MPa,
+        'yield_mode_MPa': y_mode, 'r': r,
+        'r_th': r_th, 'n': n,
+        'A_int': A_int, 'A_ext': A_ext, 'A_eff': A_eff,
+        'D0': D0, 'D_fail': D_fail,
         'Lambda_fail': lambda_from_damage(D_fail),
-        **diag,
-        'N_fail': N_fail,
+        **diag, 'N_fail': N_fail,
         'log10_N_fail': (np.log10(N_fail) if np.isfinite(N_fail) and N_fail > 0 else float('inf')),
     }
 
@@ -621,31 +504,23 @@ def generate_sn_curve(
     Ns = []
     for s in sigmas_MPa:
         out = fatigue_life_const_amp(
-            mat,
-            sigma_a_MPa=float(s),
+            mat, sigma_a_MPa=float(s),
             sigma_y_tension_MPa=sigma_y_tension_MPa,
-            A_ext=A_ext,
-            mode=mode,
-            D_fail=D_fail,
-            C_class=C_class,
-            bcc_w110=bcc_w110,
+            A_ext=A_ext, mode=mode, D_fail=D_fail,
+            C_class=C_class, bcc_w110=bcc_w110,
             apply_C_class_hcp=apply_C_class_hcp,
-            r_th_override=r_th_override,
-            n_override=n_override,
+            r_th_override=r_th_override, n_override=n_override,
         )
         Ns.append(out['N_fail'])
     return np.array(Ns, dtype=float)
 
+
 # ==============================================================================
-# Alloy validation helper (for FatigueDB integration)
+# Alloy validation helper
 # ==============================================================================
 
 def get_minimal_material(structure: Literal['BCC', 'FCC', 'HCP']) -> Material:
-    """結晶構造から最小限のMaterialを取得（合金検証用ヘルパー）
-    
-    FatigueDB等の実験データ検証時、σ_yは実測値を使うため
-    structure (r_th, n_cl) のみが必要なケース用
-    """
+    """結晶構造から最小限のMaterialを取得（合金検証用ヘルパー）"""
     base = {'BCC': MATERIALS['Fe'], 'FCC': MATERIALS['Cu'], 'HCP': MATERIALS['Ti']}
     return base[structure]
 
@@ -655,7 +530,6 @@ def get_minimal_material(structure: Literal['BCC', 'FCC', 'HCP']) -> Material:
 # ==============================================================================
 
 def cmd_point(args: argparse.Namespace) -> None:
-    # material 取得（metal or structure_only）
     if args.metal is None and args.structure_only is None:
         raise SystemExit("Error: --metal or --structure_only required")
     
@@ -671,93 +545,72 @@ def cmd_point(args: argparse.Namespace) -> None:
             c_a=float(args.c_a) if args.c_a is not None else mat0.c_a,
         )
 
-    # σ_y 計算 or override
     if args.sigma_y_override is not None:
         sigma_y = args.sigma_y_override
         y = {
-            'sigma_y': sigma_y,
-            'sigma_base': sigma_y,
-            'delta_ss': 0.0,
-            'delta_wh': 0.0,
-            'delta_ppt': 0.0,
-            'ppt_mechanism': 'N/A (override)',
+            'sigma_y': sigma_y, 'sigma_base': sigma_y,
+            'sigma_base_branch': 'override',
+            'f_de': calc_f_de(mat),
+            'delta_ss': 0.0, 'delta_wh': 0.0,
+            'delta_ppt': 0.0, 'ppt_mechanism': 'N/A (override)',
         }
     else:
         y = calc_sigma_y(
-            mat,
-            T_K=args.T_K,
-            c_wt_percent=args.c_wt,
-            k_ss=args.k_ss,
+            mat, T_K=args.T_K,
+            c_wt_percent=args.c_wt, k_ss=args.k_ss,
             solute_type=args.solute_type,
-            eps=args.eps,
-            rho_0=args.rho_0,
-            r_ppt_nm=args.r_ppt_nm,
-            f_ppt=args.f_ppt,
-            gamma_apb=args.gamma_apb,
-            A_ppt=args.A_ppt,
+            eps=args.eps, rho_0=args.rho_0,
+            r_ppt_nm=args.r_ppt_nm, f_ppt=args.f_ppt,
+            gamma_apb=args.gamma_apb, A_ppt=args.A_ppt,
             enable_peierls=args.enable_peierls,
             peierls_tau_P0_MPa=args.tau_P0,
             peierls_dG0_eV=args.dG0,
         )
         sigma_y = y['sigma_y']
 
-    # Fatigue (optional)
     if args.sigma_a is not None:
         out = fatigue_life_const_amp(
-            mat,
-            sigma_a_MPa=float(args.sigma_a),
+            mat, sigma_a_MPa=float(args.sigma_a),
             sigma_y_tension_MPa=float(sigma_y),
-            A_ext=float(args.A_ext),
-            mode=args.mode,
-            D_fail=args.D_fail,
-            C_class=args.C_class,
+            A_ext=float(args.A_ext), mode=args.mode,
+            D_fail=args.D_fail, C_class=args.C_class,
             bcc_w110=args.bcc_w110,
             apply_C_class_hcp=args.apply_C_class_hcp,
-            r_th_override=args.r_th,
-            n_override=args.n_exp,
+            r_th_override=args.r_th, n_override=args.n_exp,
         )
     else:
         out = None
 
-    # 表示
     label = f"structure={mat.structure}" if args.structure_only else f"metal={mat.name} ({mat.structure})"
     print("=" * 88)
-    print(f"v6.9b point | {label} | mode={args.mode}")
+    print(f"v10.0 SSOC point | {label} | mode={args.mode}")
     print("=" * 88)
 
-    # Yield summary
     y_mode, diag = yield_by_mode(
-        mat,
-        sigma_y_tension_MPa=float(sigma_y),
-        mode=args.mode,
-        C_class=args.C_class,
-        bcc_w110=args.bcc_w110,
+        mat, sigma_y_tension_MPa=float(sigma_y), mode=args.mode,
+        C_class=args.C_class, bcc_w110=args.bcc_w110,
         apply_C_class_hcp=args.apply_C_class_hcp,
     )
 
-    print("[Yield v5.0]")
+    # SSOC diagnostic
+    f_de_info = calc_f_de_detail(mat)
+    
+    print("[Yield v10.0 SSOC]")
     if args.sigma_y_override is not None:
         print(f"  σ_y(override) = {sigma_y:.2f} MPa")
     else:
-        print(f"  σ_base   = {y['sigma_base']:.2f} MPa")
+        print(f"  σ_base   = {y['sigma_base']:.2f} MPa  [{y['sigma_base_branch']}]")
+        print(f"  f_de     = {y['f_de']:.4f}  {f_de_info}")
         print(f"  Δσ_ss    = {y['delta_ss']:.2f} MPa")
         print(f"  Δσ_wh    = {y['delta_wh']:.2f} MPa  (rho_0={args.rho_0:.2e})")
         print(f"  Δσ_ppt   = {y['delta_ppt']:.2f} MPa  ({y['ppt_mechanism']})")
         print(f"  σ_y(t)   = {y['sigma_y']:.2f} MPa")
     
     print("[Class factors v4.1]")
-    print(f"  C_class  = {args.C_class:.4f}  (apply to HCP: {args.apply_C_class_hcp})")
-    print(f"  bcc_w110 = {args.bcc_w110:.3f}")
-    print(f"  A_texture= {mat.A_texture:.3f}")
-    print(f"  T_twin   = {mat.T_twin:.3f}")
-    print(f"  R_comp   = {mat.R_comp:.3f} (σ_c/σ_t)")
     print(f"  τ/σ_pred = {diag['tau_over_sigma']:.4f}")
     print(f"  τ_y      = {diag['tau_y']:.2f} MPa")
     print(f"  σ_y(c)   = {diag['sigma_y_compression']:.2f} MPa")
     print(f"  Yield(mode) = {y_mode:.2f} MPa")
-    print(f"  σ_base   = {y['sigma_base']:.2f} MPa  [{y['sigma_base_branch']}]")
-
-  
 
     if out is None:
         return
@@ -777,7 +630,6 @@ def cmd_point(args: argparse.Namespace) -> None:
 
 def cmd_calibrate(args: argparse.Namespace) -> None:
     """Calibrate A_ext from one (σ_a, N_fail) point."""
-    # material 取得
     if args.metal is None and args.structure_only is None:
         raise SystemExit("Error: --metal or --structure_only required")
     
@@ -793,22 +645,16 @@ def cmd_calibrate(args: argparse.Namespace) -> None:
             c_a=float(args.c_a) if args.c_a is not None else mat0.c_a,
         )
 
-    # σ_y
     if args.sigma_y_override is not None:
         sigma_y = args.sigma_y_override
     else:
         y = calc_sigma_y(
-            mat,
-            T_K=args.T_K,
-            c_wt_percent=args.c_wt,
-            k_ss=args.k_ss,
+            mat, T_K=args.T_K,
+            c_wt_percent=args.c_wt, k_ss=args.k_ss,
             solute_type=args.solute_type,
-            eps=args.eps,
-            rho_0=args.rho_0,
-            r_ppt_nm=args.r_ppt_nm,
-            f_ppt=args.f_ppt,
-            gamma_apb=args.gamma_apb,
-            A_ppt=args.A_ppt,
+            eps=args.eps, rho_0=args.rho_0,
+            r_ppt_nm=args.r_ppt_nm, f_ppt=args.f_ppt,
+            gamma_apb=args.gamma_apb, A_ppt=args.A_ppt,
             enable_peierls=args.enable_peierls,
             peierls_tau_P0_MPa=args.tau_P0,
             peierls_dG0_eV=args.dG0,
@@ -820,18 +666,15 @@ def cmd_calibrate(args: argparse.Namespace) -> None:
     n = args.n_exp if args.n_exp is not None else preset['n']
 
     y_mode, _ = yield_by_mode(
-        mat,
-        sigma_y_tension_MPa=float(sigma_y),
-        mode=args.mode,
-        C_class=args.C_class,
-        bcc_w110=args.bcc_w110,
+        mat, sigma_y_tension_MPa=float(sigma_y), mode=args.mode,
+        C_class=args.C_class, bcc_w110=args.bcc_w110,
         apply_C_class_hcp=args.apply_C_class_hcp,
     )
 
     r = args.sigma_a / y_mode
 
     if r <= r_th:
-        raise SystemExit("Calibration point is below r_th (fatigue limit); choose a point with finite life.")
+        raise SystemExit("Calibration point is below r_th; choose a point with finite life.")
 
     A_int = A_INT_DB.get(mat.name, 1.0)
     D_fail = args.D_fail
@@ -843,7 +686,7 @@ def cmd_calibrate(args: argparse.Namespace) -> None:
 
     label = f"structure={mat.structure}" if args.structure_only else f"metal={mat.name} ({mat.structure})"
     print("=" * 88)
-    print("v6.9b calibrate A_ext")
+    print("v10.0 SSOC calibrate A_ext")
     print("=" * 88)
     print(f"{label}, mode={args.mode}")
     print(f"σ_y = {sigma_y:.3f} MPa {'(override)' if args.sigma_y_override else '(calc)'}")
@@ -855,7 +698,6 @@ def cmd_calibrate(args: argparse.Namespace) -> None:
 
 
 def cmd_sn(args: argparse.Namespace) -> None:
-    # material 取得
     if args.metal is None and args.structure_only is None:
         raise SystemExit("Error: --metal or --structure_only required")
     
@@ -871,22 +713,16 @@ def cmd_sn(args: argparse.Namespace) -> None:
             c_a=float(args.c_a) if args.c_a is not None else mat0.c_a,
         )
 
-    # σ_y
     if args.sigma_y_override is not None:
         sigma_y = args.sigma_y_override
     else:
         y = calc_sigma_y(
-            mat,
-            T_K=args.T_K,
-            c_wt_percent=args.c_wt,
-            k_ss=args.k_ss,
+            mat, T_K=args.T_K,
+            c_wt_percent=args.c_wt, k_ss=args.k_ss,
             solute_type=args.solute_type,
-            eps=args.eps,
-            rho_0=args.rho_0,
-            r_ppt_nm=args.r_ppt_nm,
-            f_ppt=args.f_ppt,
-            gamma_apb=args.gamma_apb,
-            A_ppt=args.A_ppt,
+            eps=args.eps, rho_0=args.rho_0,
+            r_ppt_nm=args.r_ppt_nm, f_ppt=args.f_ppt,
+            gamma_apb=args.gamma_apb, A_ppt=args.A_ppt,
             enable_peierls=args.enable_peierls,
             peierls_tau_P0_MPa=args.tau_P0,
             peierls_dG0_eV=args.dG0,
@@ -895,22 +731,16 @@ def cmd_sn(args: argparse.Namespace) -> None:
 
     sigmas = np.linspace(args.sigma_min, args.sigma_max, args.num)
     Ns = generate_sn_curve(
-        mat,
-        sigma_y_tension_MPa=float(sigma_y),
-        A_ext=args.A_ext,
-        sigmas_MPa=sigmas,
-        mode=args.mode,
-        D_fail=args.D_fail,
-        C_class=args.C_class,
-        bcc_w110=args.bcc_w110,
-        apply_C_class_hcp=args.apply_C_class_hcp,
-        r_th_override=args.r_th,
-        n_override=args.n_exp,
+        mat, sigma_y_tension_MPa=float(sigma_y),
+        A_ext=args.A_ext, sigmas_MPa=sigmas, mode=args.mode,
+        D_fail=args.D_fail, C_class=args.C_class,
+        bcc_w110=args.bcc_w110, apply_C_class_hcp=args.apply_C_class_hcp,
+        r_th_override=args.r_th, n_override=args.n_exp,
     )
 
     label = f"structure={mat.structure}" if args.structure_only else f"metal={mat.name} ({mat.structure})"
     print("=" * 88)
-    print(f"v6.9b S-N | {label} | mode={args.mode}")
+    print(f"v10.0 SSOC S-N | {label} | mode={args.mode}")
     print("=" * 88)
     print(f"σ_y={sigma_y:.3f} MPa {'(override)' if args.sigma_y_override else '(calc)'} | A_ext={args.A_ext:.3e} | D_fail={args.D_fail:.3f}")
 
@@ -918,11 +748,8 @@ def cmd_sn(args: argparse.Namespace) -> None:
     print(f"{header_amp:>12} {'N_fail':>14} {'log10N':>10} {'r':>10} {'note':>10}")
     for s, N in zip(sigmas, Ns):
         y_mode, _ = yield_by_mode(
-            mat,
-            sigma_y_tension_MPa=float(sigma_y),
-            mode=args.mode,
-            C_class=args.C_class,
-            bcc_w110=args.bcc_w110,
+            mat, sigma_y_tension_MPa=float(sigma_y), mode=args.mode,
+            C_class=args.C_class, bcc_w110=args.bcc_w110,
             apply_C_class_hcp=args.apply_C_class_hcp,
         )
         r = s / y_mode
@@ -933,59 +760,51 @@ def cmd_sn(args: argparse.Namespace) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description='v6.9b: v5.0 yield × v6.8 fatigue + τ/σ, twins, texture')
+    p = argparse.ArgumentParser(description='v10.0 SSOC: yield × v6.8 fatigue + τ/σ')
     sub = p.add_subparsers(dest='cmd', required=True)
 
     def add_common(sp: argparse.ArgumentParser):
-        # metal OR structure_only
-        sp.add_argument('--metal', choices=sorted(MATERIALS.keys()), default=None,
-                        help='Material from database')
-        sp.add_argument('--structure_only', choices=['BCC', 'FCC', 'HCP'], default=None,
-                        help='Use structure preset only (for alloy validation)')
-        sp.add_argument('--sigma_y_override', type=float, default=None,
-                        help='Override σ_y with experimental value [MPa]')
-        
+        sp.add_argument('--metal', choices=sorted(MATERIALS.keys()), default=None)
+        sp.add_argument('--structure_only', choices=['BCC', 'FCC', 'HCP'], default=None)
+        sp.add_argument('--sigma_y_override', type=float, default=None)
         sp.add_argument('--T_K', type=float, default=300.0)
-        sp.add_argument('--c_wt', type=float, default=0.0, help='solute wt%% (e.g., 0.10 for 0.10 wt%%)')
-        sp.add_argument('--k_ss', type=float, default=0.0, help='solid-solution k [MPa/(wt%%)^n]')
+        sp.add_argument('--c_wt', type=float, default=0.0)
+        sp.add_argument('--k_ss', type=float, default=0.0)
         sp.add_argument('--solute_type', choices=['interstitial', 'substitutional'], default=None)
-        sp.add_argument('--eps', type=float, default=0.0, help='monotonic strain for work hardening')
-        sp.add_argument('--rho_0', type=float, default=0.0, help='initial dislocation density [m^-2]')
+        sp.add_argument('--eps', type=float, default=0.0)
+        sp.add_argument('--rho_0', type=float, default=0.0)
         sp.add_argument('--r_ppt_nm', type=float, default=0.0)
         sp.add_argument('--f_ppt', type=float, default=0.0)
         sp.add_argument('--gamma_apb', type=float, default=0.0)
         sp.add_argument('--A_ppt', type=float, default=1.0)
-
-        # v4.1 class factors
         sp.add_argument('--A_texture', type=float, default=1.0)
-        sp.add_argument('--T_twin', type=float, default=None, help='override T_twin')
-        sp.add_argument('--R_comp', type=float, default=None, help='override σ_c/σ_t')
-        sp.add_argument('--c_a', type=float, default=None, help='override HCP c/a')
+        sp.add_argument('--T_twin', type=float, default=None)
+        sp.add_argument('--R_comp', type=float, default=None)
+        sp.add_argument('--c_a', type=float, default=None)
         sp.add_argument('--C_class', type=float, default=C_CLASS_DEFAULT)
         sp.add_argument('--bcc_w110', type=float, default=DEFAULT_BCC_W110)
         sp.add_argument('--apply_C_class_hcp', action='store_true')
-        # branch factors
-        sp.add_argument('--enable_peierls', action='store_true', help='Enable BCC Peierls low-T hardening')
-        sp.add_argument('--tau_P0', type=float, default=0.0, help='Peierls stress at 0K [MPa]')
-        sp.add_argument('--dG0', type=float, default=0.0, help='Activation barrier ΔG0 [eV]')
+        sp.add_argument('--enable_peierls', action='store_true')
+        sp.add_argument('--tau_P0', type=float, default=0.0)
+        sp.add_argument('--dG0', type=float, default=0.0)
 
     def add_fatigue(sp: argparse.ArgumentParser):
         sp.add_argument('--mode', choices=['tensile', 'compression', 'shear'], default='tensile')
-        sp.add_argument('--A_ext', type=float, default=2.46e-4, help='external factor (1-point calibration)')
+        sp.add_argument('--A_ext', type=float, default=2.46e-4)
         sp.add_argument('--D_fail', type=float, default=0.5)
-        sp.add_argument('--r_th', type=float, default=None, help='Override r_th (fatigue threshold ratio)')
-        sp.add_argument('--n_exp', type=float, default=None, help='Override n (fatigue exponent)')
+        sp.add_argument('--r_th', type=float, default=None)
+        sp.add_argument('--n_exp', type=float, default=None)
 
     sp_point = sub.add_parser('point', help='compute yield (+ optional fatigue life)')
     add_common(sp_point)
     add_fatigue(sp_point)
-    sp_point.add_argument('--sigma_a', type=float, default=None, help='amplitude [MPa]. If mode=shear, this is τ_a.')
+    sp_point.add_argument('--sigma_a', type=float, default=None)
     sp_point.set_defaults(func=cmd_point)
 
     sp_cal = sub.add_parser('calibrate', help='calibrate A_ext from one fatigue point')
     add_common(sp_cal)
     add_fatigue(sp_cal)
-    sp_cal.add_argument('--sigma_a', type=float, required=True, help='amplitude [MPa]. If mode=shear, τ_a.')
+    sp_cal.add_argument('--sigma_a', type=float, required=True)
     sp_cal.add_argument('--N_fail', type=float, required=True)
     sp_cal.set_defaults(func=cmd_calibrate)
 
@@ -999,12 +818,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     return p
 
+
 def main() -> None:
-    # 起動時にランダムで表示
-    show_banner()  # ← これだけ！
+    show_banner()
     parser = build_parser()
     args = parser.parse_args()
     args.func(args)
+
 
 if __name__ == '__main__':
     main()
