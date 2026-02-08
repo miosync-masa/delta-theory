@@ -72,9 +72,6 @@ from .material import (
     # Structure presets
     StructurePreset,
     STRUCTURE_PRESETS,
-    
-    # Backward compat
-    MaterialGPU,
 )
 
 # ==============================================================================
@@ -231,7 +228,6 @@ __all__ = [
     "list_by_structure",
     "StructurePreset",
     "STRUCTURE_PRESETS",
-    "MaterialGPU",
     
     # === SSOC (v10.0 — NEW) ===
     "calc_f_de",
