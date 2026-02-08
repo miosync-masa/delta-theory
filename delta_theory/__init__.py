@@ -83,6 +83,7 @@ from .ssoc import (
     calc_f_de_detail,
     sigma_base_v10,
     sigma_base_v10_with_fde,
+    inverse_f_de,
     
     # FCC PCC
     fcc_f_de,
@@ -234,6 +235,7 @@ __all__ = [
     "calc_f_de_detail",
     "sigma_base_v10",
     "sigma_base_v10_with_fde",
+    "inverse_f_de",
     "fcc_f_de",
     "fcc_gate",
     "fcc_f_mu",
