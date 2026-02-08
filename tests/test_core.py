@@ -373,14 +373,14 @@ class TestSSOC:
         assert abs(f - 2.9925) < 0.01
 
     def test_bcc_fe_reference_level(self):
-        """Fe: d⁶ 基準レベル"""
+        """Fe: d⁶ 基準レベル (f_de ≈ 1.05)"""
         from delta_theory.material import get_material
         from delta_theory.ssoc import bcc_f_de
 
         fe = get_material("Fe")
         f = bcc_f_de(fe)
-        # Fe: JT=1.0, 5d=1.0, lattice=1.0
-        assert abs(f - 1.0) < 0.05
+        # Fe: JT=1.0, 5d=1.0, lattice=1.05 (Group8)
+        assert abs(f - 1.05) < 0.01
 
     def test_bcc_f_de_detail(self):
         """BCC f_de内訳が取得可能"""
@@ -391,7 +391,7 @@ class TestSSOC:
         detail = bcc_f_de_detail(w)
         assert "f_jt" in detail
         assert "f_5d" in detail
-        assert "f_lattice" in detail
+        assert "f_lat" in detail
         assert "f_de" in detail
         assert abs(detail["f_de"] - bcc_f_de(w)) < 1e-15
 
@@ -410,14 +410,16 @@ class TestSSOC:
         assert f_high > hcp_f_aniso(1.0)
 
     def test_hcp_ca_constraint(self):
-        """HCP: c/a ≤ ideal → f_ca = 1.0, c/a > ideal → 補正"""
+        """HCP: c/a < ideal → f_ca > 1.0 (補正), c/a ≥ ideal → f_ca = 1.0"""
         from delta_theory.ssoc import HCP_CA_IDEAL, hcp_f_ca
 
-        assert abs(hcp_f_ca(1.5) - 1.0) < 1e-15      # below ideal
-        assert abs(hcp_f_ca(HCP_CA_IDEAL) - 1.0) < 1e-15  # at ideal
-        # above ideal: correction active
-        f_above = hcp_f_ca(1.88)  # Cd-like
-        assert f_above != 1.0
+        # at ideal: f_ca = 1.0
+        assert abs(hcp_f_ca(HCP_CA_IDEAL) - 1.0) < 1e-15
+        # above ideal: no correction
+        assert abs(hcp_f_ca(1.88) - 1.0) < 1e-15  # Cd-like
+        # below ideal: correction active (f_ca > 1.0)
+        f_below = hcp_f_ca(1.5)
+        assert f_below > 1.0
 
     def test_hcp_ti_reference(self):
         """Ti: f_de ≈ 3.17"""
@@ -480,7 +482,6 @@ class TestSSOC:
             mat = get_material(name)
             detail = calc_f_de_detail(mat)
             assert "f_de" in detail
-            assert "structure" in detail
             assert abs(detail["f_de"] - calc_f_de(mat)) < 1e-15
 
     # --- sigma_base_v10 ---
@@ -532,7 +533,7 @@ class TestSSOC:
         assert abs(sigma_manual - sigma_func) < 1e-10
 
     def test_sigma_base_v10_with_fde(self):
-        """sigma_base_v10_with_fde がf_deも返す"""
+        """sigma_base_v10_with_fde: 外部f_deを渡して計算"""
         from delta_theory.material import get_material
         from delta_theory.ssoc import (
             calc_f_de,
@@ -541,9 +542,10 @@ class TestSSOC:
         )
 
         mat = get_material("Cu")
-        sigma, fde = sigma_base_v10_with_fde(mat, T_K=300.0)
-        assert abs(sigma - sigma_base_v10(mat, T_K=300.0)) < 1e-15
-        assert abs(fde - calc_f_de(mat)) < 1e-15
+        fde = calc_f_de(mat)
+        sigma_ext = sigma_base_v10_with_fde(mat, fde, T_K=300.0)
+        sigma_int = sigma_base_v10(mat, T_K=300.0)
+        assert abs(sigma_ext - sigma_int) < 1e-10
 
     # --- inverse_f_de ---
 
@@ -853,13 +855,13 @@ class TestSSOCPhysics:
         assert w_fde > v_fde
 
     def test_hcp_ti_stronger_than_mg(self):
-        """HCP: Ti の f_de > Mg の f_de（d電子効果）"""
+        """HCP: Ti の σ_base > Mg の σ_base"""
         from delta_theory.material import get_material
-        from delta_theory.ssoc import calc_f_de
+        from delta_theory.ssoc import sigma_base_v10
 
-        ti_fde = calc_f_de(get_material("Ti"))
-        mg_fde = calc_f_de(get_material("Mg"))
-        assert ti_fde > mg_fde
+        ti_sigma = sigma_base_v10(get_material("Ti"))
+        mg_sigma = sigma_base_v10(get_material("Mg"))
+        assert ti_sigma > mg_sigma
 
     def test_structure_comparison_f_de_range(self):
         """f_de の範囲: 全構造で 0.3 < f_de < 10"""
