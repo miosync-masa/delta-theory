@@ -17,7 +17,7 @@ SSOC (Structure-Selective Orbital Coupling) — f_de計算モジュール
   PCC (FCC, HCP): 入力場と応答が分離可能
   SCC (BCC):      場と応答が不可分（SCF解の縮約）
 
-Author: 飯泉真道
+Author: 環 & ご主人さま (飯泉真道)
 Date: 2026-02-08
 ================================================================================
 """
@@ -33,6 +33,11 @@ from .material import Material, BD_RATIO_SQ, COEFF_V10, eV_to_J, k_B, PI
 # SSOC 共通定数
 # ==============================================================================
 P_DIM: float = 2.0 / 3.0    # 面(2D)→体積(3D) 次元変換 = 2/3（全構造共通）
+
+# v10.0ではMを全構造統一 = 3.0
+# （構造差はf_deのSSOCが吸収するため、Mは多結晶平均の汎用値）
+# material.pyのM_taylorはv7.0互換で構造依存値を保持
+M_SSOC: float = 3.0
 
 
 # ╔══════════════════════════════════════════════════════════════════════╗
@@ -290,19 +295,13 @@ def sigma_base_v10(mat: Material, T_K: float = 300.0) -> float:
     
     σ_y = (8√5/5πMZ) × α₀ × (b/d)² × f_de × √(E_coh·k_B·T_m) / V_act × HP
     
-    Args:
-        mat: Material instance (SSОCパラメータ込み)
-        T_K: 温度 [K]
-    
-    Returns:
-        σ_base [MPa]
+    Note: M = M_SSOC = 3.0 (全構造統一、v10.0仕様)
     """
     HP = max(0.0, 1.0 - T_K / mat.T_m)
     f_de = calc_f_de(mat)
-    M = mat.M_taylor
     Z = mat.Z_bulk
     
-    sigma = (COEFF_V10 / (M * Z)
+    sigma = (COEFF_V10 / (M_SSOC * Z)
              * mat.alpha0 * BD_RATIO_SQ * f_de
              * mat.sqrt_EkT
              / mat.V_act * HP)
@@ -317,10 +316,9 @@ def sigma_base_v10_with_fde(
 ) -> float:
     """外部からf_deを渡す版（テスト・検証用）"""
     HP = max(0.0, 1.0 - T_K / mat.T_m)
-    M = mat.M_taylor
     Z = mat.Z_bulk
     
-    sigma = (COEFF_V10 / (M * Z)
+    sigma = (COEFF_V10 / (M_SSOC * Z)
              * mat.alpha0 * BD_RATIO_SQ * f_de
              * mat.sqrt_EkT
              / mat.V_act * HP)
@@ -334,10 +332,9 @@ def inverse_f_de(mat: Material, sigma_exp_MPa: float, T_K: float = 300.0) -> flo
     if HP <= 0:
         return float('inf')
     
-    M = mat.M_taylor
     Z = mat.Z_bulk
     
-    return (sigma_exp_MPa * 1e6 * mat.V_act * M * Z
+    return (sigma_exp_MPa * 1e6 * mat.V_act * M_SSOC * Z
             / (COEFF_V10 * mat.alpha0 * BD_RATIO_SQ * mat.sqrt_EkT * HP))
 
 
