@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**"Nature is Geometry"** — Predicting material properties from geometric first principles
+**"Nature is Geometry"** — Predicting material properties from Geometric Structural Principles
 
 [![PyPI](https://img.shields.io/pypi/v/delta-theory.svg)](https://pypi.org/project/delta-theory/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -16,7 +16,7 @@
 
 ## 🎯 Overview
 
-δ-Theory is a unified framework that predicts material properties from **crystal structure geometry**. Unlike traditional empirical fitting approaches, it derives material behavior from physical first principles.
+δ-Theory is a unified framework that predicts material properties from **crystal structure geometry**. Unlike traditional empirical fitting approaches, it derives material behavior from Geometric Structural Principles
 
 ### Core Equation
 
