@@ -177,11 +177,9 @@ def bcc_f_de(mat: Material) -> float:
     """BCC SSOC f_de — SCC 3層モデル + sp分岐"""
     if mat.n_d < 2:
         return bcc_f_sp(n_d=mat.n_d, period=mat.period, group=mat.group)
-    
     return (bcc_f_jt(mat.n_d)
             * bcc_f_5d(mat.n_d, mat.period)
-            * bcc_f_lattice(mat.group, mat.sel, mat.period)
-
+            * bcc_f_lattice(mat.group, mat.sel, mat.period))
 
 def bcc_f_de_detail(mat: Material) -> Dict[str, float]:
     """BCC f_de の内訳を返す（診断用）"""
