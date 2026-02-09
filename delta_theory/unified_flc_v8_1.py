@@ -25,11 +25,6 @@ v8.0 → v8.1: Integration with unified_yield_fatigue_v6_9
       flc0=0.28,
       T_twin=1.0,
   )
-  
-  # v6.9のMaterialクラスから直接
-  # (v6.9がimport可能な場合)
-  from unified_yield_fatigue_v6_9 import MATERIALS
-  flc.add_from_v69_material(MATERIALS['Fe'], flc0=0.225, name='SPCC')
 
 Author: δ-Theory Team (Masamichi Iizumi & Tamaki)
 Version: 8.1.0
@@ -46,58 +41,19 @@ import random
 from .banners import show_banner
 
 # ==============================================================================
-# Try to import v6.9b
+# Import v10.0 SSOC (replaces v6.9)
 # ==============================================================================
+from .unified_yield_fatigue_v10 import (
+    tau_over_sigma as v69_tau_over_sigma,
+    sigma_c_over_sigma_t as v69_sigma_c_over_sigma_t,
+    sigma_base_delta,
+    calc_sigma_y,
+    C_CLASS_DEFAULT,
+    DEFAULT_BCC_W110,
+)
+from .material import Material as V69_Material, MATERIALS as V69_MATERIALS
 
-V69_AVAILABLE = False
-V69_MATERIALS = {}
-V69_Material = None
-
-try:
-    from unified_yield_fatigue_v6_9 import (
-        tau_over_sigma as v69_tau_over_sigma,
-        sigma_c_over_sigma_t as v69_sigma_c_over_sigma_t,
-        sigma_base_delta,
-        calc_sigma_y,
-        Material as V69_Material,
-        MATERIALS as V69_MATERIALS,
-        T_TWIN as V69_T_TWIN,
-        R_COMP as V69_R_COMP,
-        C_CLASS_DEFAULT,
-        DEFAULT_BCC_W110,
-    )
-    V69_AVAILABLE = True
-except ImportError:
-    try:
-        # Try relative import (as package)
-        from .unified_yield_fatigue_v6_9 import (
-            tau_over_sigma as v69_tau_over_sigma,
-            sigma_c_over_sigma_t as v69_sigma_c_over_sigma_t,
-            sigma_base_delta,
-            calc_sigma_y,
-            Material as V69_Material,
-            MATERIALS as V69_MATERIALS,
-            T_TWIN as V69_T_TWIN,
-            R_COMP as V69_R_COMP,
-            C_CLASS_DEFAULT,
-            DEFAULT_BCC_W110,
-        )
-        V69_AVAILABLE = True
-    except ImportError:
-        warnings.warn(
-            "unified_yield_fatigue_v6_9 not found. "
-            "Using built-in parameters. "
-            "For full functionality, ensure v6.9 is in the same directory."
-        )
-        V69_AVAILABLE = False
-        # Fallback defaults
-        v69_tau_over_sigma = None
-        v69_sigma_c_over_sigma_t = None
-        V69_MATERIALS = {}
-        C_CLASS_DEFAULT = 1.415
-        DEFAULT_BCC_W110 = 0.0
-        V69_T_TWIN = {}
-        V69_R_COMP = {}
+V69_AVAILABLE = True
 
 # ==============================================================================
 # Built-in Parameters (Fallback when v6.9 not available)
