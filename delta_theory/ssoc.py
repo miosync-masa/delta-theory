@@ -120,6 +120,10 @@ def fcc_f_de_detail(mat: Material) -> Dict[str, float]:
 BCC_DELTA_JT = 0.9    # d⁴ Jahn-Teller anomaly
 BCC_F_5D = 1.5         # 5d相対論補正
 
+BCC_F_SP_BASE = 0.10
+BCC_F_SP_MIN  = 0.05
+BCC_F_SP_MAX  = 0.20
+
 BCC_LATTICE = {
     6: {'f_lat': 1.05},
     8: {'f_lat': 1.05},
@@ -155,29 +159,55 @@ def bcc_f_lattice(group: int, sel: int, period: int) -> float:
         return base
     return 1.0
 
+def bcc_f_sp(n_d: int, period: int, group: int | None = None) -> float:
+    """
+    BCC sp-metal branch (n_d < 2):
+      d軌道方向性ゲートが閉じる(g_d=0相当)ため、SCC(ΔE_P自己生成)は成立しない。
+      よって Peierls自己生成チャンネルを「縮約因子」として強く抑制する。
+
+    現状: Li/Na(300K) 校正で f_de ≈ 0.1 を採用。
+    将来: 温度/純度/転位密度などの“材料状態”依存をここに集約して拡張する。
+    """
+    if n_d >= 2:
+        return 1.0
+    # まずはフラットでOK（HPが既に温度を吸ってるので、二重にT依存させない）
+    return float(np.clip(BCC_F_SP_BASE, BCC_F_SP_MIN, BCC_F_SP_MAX))
 
 def bcc_f_de(mat: Material) -> float:
-    """BCC SSOC f_de — SCC 3層モデル
-    f_de = f_JT × f_5d × f_lat
-    """
+    """BCC SSOC f_de — SCC 3層モデル + sp分岐"""
+    if mat.n_d < 2:
+        return bcc_f_sp(n_d=mat.n_d, period=mat.period, group=mat.group)
+    
     return (bcc_f_jt(mat.n_d)
             * bcc_f_5d(mat.n_d, mat.period)
-            * bcc_f_lattice(mat.group, mat.sel, mat.period))
+            * bcc_f_lattice(mat.group, mat.sel, mat.period)
 
 
 def bcc_f_de_detail(mat: Material) -> Dict[str, float]:
     """BCC f_de の内訳を返す（診断用）"""
+    if mat.n_d < 2:
+        f_sp = bcc_f_sp(n_d=mat.n_d, period=mat.period, group=mat.group)
+        return {
+            'branch': 'sp',
+            'f_sp': f_sp,
+            'f_jt': None,
+            'f_5d': None,
+            'f_lat': None,
+            'f_de': f_sp,
+        }
+    
     f_jt = bcc_f_jt(mat.n_d)
     f_5d = bcc_f_5d(mat.n_d, mat.period)
     f_lat = bcc_f_lattice(mat.group, mat.sel, mat.period)
     return {
+        'branch': 'scc',
         'f_jt': f_jt,
         'f_5d': f_5d,
         'f_lat': f_lat,
+        'f_sp': None,
         'f_de': f_jt * f_5d * f_lat,
     }
-
-
+  
 # ╔══════════════════════════════════════════════════════════════════════╗
 # ║  HCP — PCC (Perturbative-Coupled Channel)                          ║
 # ║  チャンネル X_HCP = R (CRSS異方性比)                                 ║
