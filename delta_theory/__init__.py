@@ -9,6 +9,7 @@ Modules:
     - material: Unified material database (v10.0 — SSOC parameters)
     - ssoc: Structure-Selective Orbital Coupling calculation layer (v10.0)
     - unified_yield_fatigue_v10: Main yield + fatigue model (v10.0 SSOC)
+    - am_fatigue: AM alloy fatigue life prediction (structure presets)
     - unified_flc_v8_1: FLC prediction with v6.9 integration (v8.1)
     - dbt_unified: Ductile-Brittle Transition Temperature prediction
     - fatigue_redis_api: FatigueData-AM2022 Redis API (optional)
@@ -31,6 +32,10 @@ Version History:
            - f_de: FCC-PCC, BCC-SCC, HCP-PCC
            - Unified M_SSOC=3.0 (structure差をf_deが吸収)
            - 25 metals validated, MAE=3.2%
+    v10.1  - AM alloy fatigue module (am_fatigue)
+           - Structure presets (BCC/FCC/HCP) validated on 3040 points
+           - RMSE=1.113 (logN) across 30 AM alloys
+           - Temperature S-N via σ_y(T) passthrough
 
 Example:
     >>> from delta_theory import calc_sigma_y, MATERIALS
@@ -39,6 +44,10 @@ Example:
     >>> from delta_theory import calc_f_de, sigma_base_v10
     >>> f_de = calc_f_de(MATERIALS['Fe'])
     >>> sigma = sigma_base_v10(MATERIALS['Fe'])
+    
+    >>> from delta_theory import am_fatigue_life, am_sn_curve
+    >>> result = am_fatigue_life(200, 900, 1050, 'HCP')
+    >>> sigma_a, N_f = am_sn_curve(900, 1050, 'HCP')
     
     >>> from delta_theory import FLCPredictor, predict_flc
     >>> flc = FLCPredictor()
@@ -136,6 +145,24 @@ from .unified_yield_fatigue_v10 import (
 )
 
 # ==============================================================================
+# AM Alloy Fatigue (v10.1 — Structure Preset S-N)
+# ==============================================================================
+from .am_fatigue import (
+    # Core prediction
+    am_fatigue_life,
+    am_sn_curve,
+    am_sn_curve_temperature,
+    
+    # Data
+    AMFatiguePreset,
+    AM_PRESETS,
+    ALLOY_STRUCTURE,
+    
+    # Utility
+    get_structure,
+)
+
+# ==============================================================================
 # FLC v8.1: 7-Mode Discrete + v6.9 Integration
 # ==============================================================================
 from .unified_flc_v8_1 import (
@@ -210,7 +237,7 @@ except ImportError:
 # ==============================================================================
 # Package Metadata
 # ==============================================================================
-__version__ = "10.0.0"
+__version__ = "10.1.0"
 __author__ = "Masamichi Iizumi & Tamaki"
 
 __all__ = [
@@ -268,6 +295,15 @@ __all__ = [
     "sigma_c_over_sigma_t",
     "FATIGUE_CLASS_PRESET",
     "C_CLASS_DEFAULT",
+    
+    # === AM Alloy Fatigue (v10.1) ===
+    "am_fatigue_life",
+    "am_sn_curve",
+    "am_sn_curve_temperature",
+    "AMFatiguePreset",
+    "AM_PRESETS",
+    "ALLOY_STRUCTURE",
+    "get_structure",
     
     # === v8.1 FLC ===
     "FLCPredictor",
@@ -331,7 +367,7 @@ def info():
     show_banner()  # 🎲 Random banner every time!
     print(f"""
 ╔══════════════════════════════════════════════════════════════════════╗
-║  δ-Theory Core Library v{__version__}                                     ║
+║  δ-Theory Core Library v{__version__}                                    ║
 ║  "Nature is Geometry"                                                ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║                                                                      ║
@@ -357,10 +393,15 @@ def info():
 ║    >>> calc_f_de(MATERIALS['Fe'])                                    ║
 ║    >>> sigma_base_v10(MATERIALS['Fe'])                               ║
 ║                                                                      ║
-║  FATIGUE LIFE (v6.10)                                                ║
-║    N = f(r, r_th, structure)  |  r_th: BCC=0.65, FCC=0.02, HCP=0.20 ║
-║    Universal r-N normalization across AM materials                   ║
-║    >>> fatigue_life_const_amp(sigma_a, MATERIALS['Fe'])              ║
+║  FATIGUE LIFE                                                        ║
+║    Pure metal (v10.0): per-material A_int, academic precision        ║
+║    AM alloy  (v10.1): structure presets, practical prediction        ║
+║      N = min( C×r^(-m) + 0.5/(A×r^n),  D×(1-r/r_u)^p )             ║
+║      3040 points, 30 alloys, RMSE=1.113 (logN)                      ║
+║      BCC: 0.699 | FCC: 1.050 | HCP: 1.376                          ║
+║      Temperature S-N via σ_y(T) passthrough                         ║
+║    >>> am_fatigue_life(200, 900, 1050, 'HCP')                       ║
+║    >>> am_sn_curve(900, 1050, 'HCP')                                ║
 ║                                                                      ║
 ║  FLC v8.1 - 7-MODE DISCRETE FORMULATION                              ║
 ║    ε₁,j = |V|_eff × C_j / R_j                                        ║
