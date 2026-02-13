@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-δ-Theory Unit Tests (v10.1.0)
+δ-Theory Unit Tests (v10.2.0)
 ==============================
 Updated for:
-  - v10.1 SSOC (Structure-Selective Orbital Coupling) — 37 metals
+  - v10.2 SSOC (Structure-Selective Orbital Coupling) — 37 metals
   - 新ゲート: d¹ gate, sp_cov, 4f lanthanide, complex, p-block
   - material.py: 37金属 + n_f, n_atoms_cell, group全金属明示
-  - ssoc.py: v10.1計算層 (FCC PCC / BCC SCC / HCP PCC + 拡張ゲート)
+  - ssoc.py: v10.2計算層 (FCC PCC / BCC SCC / HCP PCC + 拡張ゲート)
 
-v10.0 → v10.1 テスト変更:
+v10.0 → v10.2 テスト変更:
   - 金属数: 25 → 37
   - period範囲: (3,4,5,6) → (2,3,4,5,6)  [Li, Be]
   - BCC group: (5,6,8) → 全族対応 [Li(1), Na(1), Mn(7), Sn(14)]
@@ -30,11 +30,11 @@ sys.path.insert(0, "..")
 
 
 # =============================================================================
-# Material Database Tests (material.py — v10.1 SSOC parameters)
+# Material Database Tests (material.py — v10.2 SSOC parameters)
 # =============================================================================
 
 class TestMaterial:
-    """material.py のテスト (v10.1 SSOC対応 — 37金属)"""
+    """material.py のテスト (v10.2 SSOC対応 — 37金属)"""
 
     def test_import(self):
         """インポートテスト"""
@@ -113,7 +113,7 @@ class TestMaterial:
             assert mat.gamma_isf > 0, f"{name}: gamma_isf should be positive"
 
     def test_ssoc_bcc_fields(self):
-        """BCC材料のSSOCパラメータ (v10.1: 全族対応)"""
+        """BCC材料のSSOCパラメータ (v10.2: 全族対応)"""
         from delta_theory.material import get_material, list_by_structure
 
         valid_groups = {1, 5, 6, 7, 8, 14}  # Li/Na(1), V/Nb/Ta(5), Cr/Mo/W(6), Mn(7), Fe(8), Sn(14)
@@ -125,7 +125,7 @@ class TestMaterial:
             assert mat.sel in valid_sels, f"{name}: sel={mat.sel}"
 
     def test_ssoc_hcp_fields(self):
-        """HCP材料のSSOCパラメータ (v10.1: Bi c/a=1.308 対応)"""
+        """HCP材料のSSOCパラメータ (v10.2: Bi c/a=1.308 対応)"""
         from delta_theory.material import get_material, list_by_structure
 
         for name in list_by_structure("HCP"):
@@ -134,7 +134,7 @@ class TestMaterial:
             assert 1.2 < mat.c_a < 1.9, f"{name}: c_a={mat.c_a} out of physical range"
 
     def test_v101_new_fields(self):
-        """v10.1 新規フィールド (n_f, n_atoms_cell) のデフォルト値"""
+        """v10.2 新規フィールド (n_f, n_atoms_cell) のデフォルト値"""
         from delta_theory.material import get_material
 
         # 既存金属はデフォルト値
@@ -153,7 +153,7 @@ class TestMaterial:
         assert mn.n_atoms_cell == 58
 
     def test_v101_new_metals_group(self):
-        """v10.1 新規金属のgroup設定"""
+        """v10.2 新規金属のgroup設定"""
         from delta_theory.material import get_material
 
         assert get_material("Li").group == 1
@@ -170,7 +170,7 @@ class TestMaterial:
         assert get_material("Bi").group == 15
 
     def test_existing_metals_group_added(self):
-        """v10.1: 既存金属にもgroupが明示されている"""
+        """v10.2: 既存金属にもgroupが明示されている"""
         from delta_theory.material import get_material
 
         # FCC既存金属のgroup確認
@@ -196,7 +196,7 @@ class TestMaterial:
         assert MATERIALS["W"] is MATERIALS["Tungsten"]
         assert MATERIALS["Ti"] is MATERIALS["Titanium"]
         assert MATERIALS["Pt"] is MATERIALS["Platinum"]
-        # v10.1 新規エイリアス
+        # v10.2 新規エイリアス
         assert MATERIALS["Li"] is MATERIALS["Lithium"]
         assert MATERIALS["Mn"] is MATERIALS["Manganese"]
         assert MATERIALS["Ce"] is MATERIALS["Cerium"]
@@ -295,7 +295,7 @@ class TestMaterial:
         assert fcc.r_th < 0.1
 
     def test_list_by_structure(self):
-        """構造別リスト (v10.1: 37金属)"""
+        """構造別リスト (v10.2: 37金属)"""
         from delta_theory.material import list_by_structure
 
         bcc = list_by_structure("BCC")
@@ -309,7 +309,7 @@ class TestMaterial:
         assert "Fe" in bcc and "W" in bcc and "Ta" in bcc
         assert "Cu" in fcc and "Ir" in fcc and "Pb" in fcc
         assert "Ti" in hcp and "Ru" in hcp and "Cd" in hcp
-        # v10.1 新規
+        # v10.2 新規
         assert "Li" in bcc and "Na" in bcc and "Mn" in bcc and "Sn" in bcc
         assert "Ce" in fcc and "In" in fcc
         assert "Co" in hcp and "Be" in hcp and "Sc" in hcp
@@ -333,7 +333,7 @@ class TestMaterial:
         assert "Fe" in s
         assert "n_d" in s
 
-        # v10.1: ランタノイドは n_f 表示
+        # v10.2: ランタノイドは n_f 表示
         ce = get_material("Ce")
         s_ce = ce.summary()
         assert "n_f" in s_ce
@@ -348,11 +348,11 @@ class TestMaterial:
 
 
 # =============================================================================
-# SSOC Tests (ssoc.py — Calculation Layer v10.1)
+# SSOC Tests (ssoc.py — Calculation Layer v10.2)
 # =============================================================================
 
 class TestSSOC:
-    """ssoc.py のテスト (v10.1 SSOC計算層)"""
+    """ssoc.py のテスト (v10.2 SSOC計算層)"""
 
     def test_import(self):
         """インポートテスト"""
@@ -397,7 +397,7 @@ class TestSSOC:
         assert fcc_gate(1) == 0.0
 
     def test_fcc_gate_p_block_d10(self):
-        """v10.1: FCC p-block d¹⁰ (In): g_d = 0"""
+        """v10.2: FCC p-block d¹⁰ (In): g_d = 0"""
         from delta_theory.ssoc import fcc_gate
 
         assert fcc_gate(10, group=13) == 0.0   # In: d¹⁰ + p-block
@@ -411,7 +411,7 @@ class TestSSOC:
         assert abs(fcc_f_mu(100.0, g_d=0.0) - 1.0) < 1e-15
 
     def test_fcc_f_lanthanide(self):
-        """v10.1: ランタノイド4f結晶場ゲート"""
+        """v10.2: ランタノイド4f結晶場ゲート"""
         from delta_theory.ssoc import fcc_f_lanthanide
 
         # 非ランタノイド → 1.0
@@ -434,7 +434,7 @@ class TestSSOC:
         assert abs(f - 1.0) < 0.01
 
     def test_fcc_f_de_detail(self):
-        """FCC f_de内訳が取得可能 (v10.1: f_lanthanide追加)"""
+        """FCC f_de内訳が取得可能 (v10.2: f_lanthanide追加)"""
         from delta_theory.material import get_material
         from delta_theory.ssoc import fcc_f_de, fcc_f_de_detail
 
@@ -477,7 +477,7 @@ class TestSSOC:
         assert bcc_f_5d(6, period=4) == 1.0
 
     def test_bcc_complex_gate(self):
-        """v10.1: 複雑構造ゲート (α-Mn: 58at/cell)"""
+        """v10.2: 複雑構造ゲート (α-Mn: 58at/cell)"""
         from delta_theory.ssoc import bcc_f_complex
 
         assert bcc_f_complex(2) == 1.0      # 通常BCC
@@ -485,7 +485,7 @@ class TestSSOC:
         assert abs(f_mn - (58/2)**0.25) < 0.01  # ≈ 2.32
 
     def test_bcc_sp_unified(self):
-        """v10.1: sp金属ゲート統合 (純sp + p-block d¹⁰)"""
+        """v10.2: sp金属ゲート統合 (純sp + p-block d¹⁰)"""
         from delta_theory.ssoc import bcc_f_sp
 
         # 純sp (Li, Na)
@@ -496,7 +496,7 @@ class TestSSOC:
         assert bcc_f_sp(6) == 1.0
 
     def test_bcc_group7_lattice(self):
-        """v10.1: BCC Group7 (Mn) f_lat = 1.05"""
+        """v10.2: BCC Group7 (Mn) f_lat = 1.05"""
         from delta_theory.ssoc import bcc_f_lattice
 
         assert abs(bcc_f_lattice(7, sel=2, period=4) - 1.05) < 0.01
@@ -529,7 +529,7 @@ class TestSSOC:
         assert abs(f - 2.4366) < 0.05
 
     def test_bcc_f_de_detail(self):
-        """BCC f_de内訳が取得可能 (v10.1: f_complex追加)"""
+        """BCC f_de内訳が取得可能 (v10.2: f_complex追加)"""
         from delta_theory.material import get_material
         from delta_theory.ssoc import bcc_f_de, bcc_f_de_detail
 
@@ -574,7 +574,7 @@ class TestSSOC:
         assert f_below > 1.0
 
     def test_hcp_d1_period_gate(self):
-        """v10.1: d¹ period依存ゲート"""
+        """v10.2: d¹ period依存ゲート"""
         from delta_theory.ssoc import hcp_f_elec
 
         # d¹, period≤4 (Sc): 3.0
@@ -585,7 +585,7 @@ class TestSSOC:
         assert abs(hcp_f_elec(1, 6) - 1.5) < 0.01
 
     def test_hcp_f_5d_lanthanide_off(self):
-        """v10.1: ランタノイドには5d補正を適用しない"""
+        """v10.2: ランタノイドには5d補正を適用しない"""
         from delta_theory.ssoc import hcp_f_5d
 
         # 5d遷移金属 (Hf): 補正あり
@@ -594,7 +594,7 @@ class TestSSOC:
         assert hcp_f_5d(0, period=6, n_f=4) == 1.0
 
     def test_hcp_f_lanthanide(self):
-        """v10.1: HCP ランタノイド4f結晶場ゲート"""
+        """v10.2: HCP ランタノイド4f結晶場ゲート"""
         from delta_theory.ssoc import hcp_f_lanthanide
 
         assert hcp_f_lanthanide(0, 0) == 1.0  # 非ランタノイド
@@ -602,7 +602,7 @@ class TestSSOC:
         assert f_nd > 1.0
 
     def test_hcp_f_sp_cov(self):
-        """v10.1: sp共有結合ゲート (Be)"""
+        """v10.2: sp共有結合ゲート (Be)"""
         from delta_theory.ssoc import hcp_f_sp_cov
 
         assert abs(hcp_f_sp_cov(0, 2) - 1.905) < 0.01   # Be: period=2, n_d=0
@@ -619,7 +619,7 @@ class TestSSOC:
         assert abs(f - 3.17) < 0.05
 
     def test_hcp_f_de_detail(self):
-        """HCP f_de内訳が取得可能 (v10.1: f_lanthanide, f_sp_cov追加)"""
+        """HCP f_de内訳が取得可能 (v10.2: f_lanthanide, f_sp_cov追加)"""
         from delta_theory.material import get_material
         from delta_theory.ssoc import hcp_f_de, hcp_f_de_detail
 
@@ -741,7 +741,7 @@ class TestSSOC:
     # --- inverse_f_de ---
 
     def test_inverse_f_de_roundtrip(self):
-        """inverse_f_de の順逆一致 (6金属, v10.1新規含む)"""
+        """inverse_f_de の順逆一致 (6金属, v10.2新規含む)"""
         from delta_theory.material import get_material
         from delta_theory.ssoc import calc_f_de, inverse_f_de, sigma_base_v10
 
@@ -800,11 +800,11 @@ class TestSSOC:
 
 
 # =============================================================================
-# Unified Yield + Fatigue Tests (v10.1)
+# Unified Yield + Fatigue Tests (v10.2)
 # =============================================================================
 
 class TestUnifiedYieldFatigue:
-    """unified_yield_fatigue のテスト (v10.1 SSOC)"""
+    """unified_yield_fatigue のテスト (v10.2 SSOC)"""
 
     def test_import(self):
         """インポートテスト"""
@@ -994,11 +994,11 @@ class TestUnifiedYieldFatigue:
 
 
 # =============================================================================
-# v10.1 SSOC Specific Tests (Physics Validation)
+# v10.2 SSOC Specific Tests (Physics Validation)
 # =============================================================================
 
 class TestSSOCPhysics:
-    """v10.1 SSOC の物理的妥当性"""
+    """v10.2 SSOC の物理的妥当性"""
 
     def test_delta_l_free_equivalence(self):
         """δ_Lフリーの核心: E_bond × δ_L ∝ √(E_coh · k_B · T_m)"""
@@ -1023,7 +1023,7 @@ class TestSSOCPhysics:
         assert abs(calc_f_de(pb) - 1.0) < 0.05
 
     def test_fcc_p_block_d10_universality(self):
-        """v10.1: FCC p-block d¹⁰ (In) は g_d=0 で f_de ≈ 1.0"""
+        """v10.2: FCC p-block d¹⁰ (In) は g_d=0 で f_de ≈ 1.0"""
         from delta_theory.material import get_material
         from delta_theory.ssoc import calc_f_de
 
@@ -1045,7 +1045,7 @@ class TestSSOCPhysics:
         assert w_fde > v_fde
 
     def test_bcc_sp_weakest(self):
-        """v10.1: BCC sp-metals (Li, Na) は最も低いf_de"""
+        """v10.2: BCC sp-metals (Li, Na) は最も低いf_de"""
         from delta_theory.material import get_material
         from delta_theory.ssoc import calc_f_de
 
@@ -1068,7 +1068,7 @@ class TestSSOCPhysics:
         assert ti_sigma > mg_sigma
 
     def test_lanthanide_gate_effect(self):
-        """v10.1: ランタノイド4fゲートが有効"""
+        """v10.2: ランタノイド4fゲートが有効"""
         from delta_theory.material import get_material
         from delta_theory.ssoc import calc_f_de
 
@@ -1080,7 +1080,7 @@ class TestSSOCPhysics:
         assert calc_f_de(nd) > 1.0
 
     def test_structure_comparison_f_de_range(self):
-        """f_de の範囲: 全構造で 0.05 < f_de < 10 (v10.1: sp branch拡張)"""
+        """f_de の範囲: 全構造で 0.05 < f_de < 10 (v10.2: sp branch拡張)"""
         from delta_theory.material import get_material, list_materials
         from delta_theory.ssoc import calc_f_de
 
@@ -1089,7 +1089,7 @@ class TestSSOCPhysics:
             assert 0.05 < f < 10, f"{name}: f_de={f:.3f} out of range"
 
     def test_v101_gates_no_effect_on_existing_27(self):
-        """v10.1ゲートは既存27金属に影響しない"""
+        """v10.2ゲートは既存27金属に影響しない"""
         from delta_theory.material import get_material
         from delta_theory.ssoc import calc_f_de
 
@@ -1103,7 +1103,7 @@ class TestSSOCPhysics:
             mat = get_material(name)
             f = calc_f_de(mat)
             assert abs(f - expected) < 0.01, (
-                f"{name}: f_de={f:.4f}, expected={expected:.4f} (v10.1 gate leak?)"
+                f"{name}: f_de={f:.4f}, expected={expected:.4f} (v10.2 gate leak?)"
             )
 
 
@@ -1175,7 +1175,7 @@ class TestDBTUnified:
 # =============================================================================
 
 class TestPackageInit:
-    """__init__.py のテスト (v10.1)"""
+    """__init__.py のテスト (v10.2)"""
 
     def test_top_level_import(self):
         """トップレベルインポート"""
