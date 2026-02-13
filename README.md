@@ -55,7 +55,7 @@ pip install -e .
 
 ## 🚀 Quick Start
 
-### Yield Stress (v10.0 SSOC)
+### Yield Stress (v10.1 SSOC)
 ```python
 from delta_theory import calc_sigma_y, MATERIALS, calc_f_de, sigma_base_v10
 
