@@ -156,10 +156,13 @@ from .am_fatigue import (
     # Data
     AMFatiguePreset,
     AM_PRESETS,
+    AMAlloy,
+    ALLOY_DB,
     ALLOY_STRUCTURE,
     
     # Utility
     get_structure,
+    get_alloy,
 )
 
 # ==============================================================================
@@ -302,8 +305,11 @@ __all__ = [
     "am_sn_curve_temperature",
     "AMFatiguePreset",
     "AM_PRESETS",
+    "AMAlloy",
+    "ALLOY_DB",
     "ALLOY_STRUCTURE",
     "get_structure",
+    "get_alloy",
     
     # === v8.1 FLC ===
     "FLCPredictor",
