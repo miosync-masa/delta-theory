@@ -581,8 +581,8 @@ class TestSSOC:
         assert abs(hcp_f_elec(1, 4) - 3.0) < 0.01
         # d¹, period=5 (Y): 1.5
         assert abs(hcp_f_elec(1, 5) - 1.5) < 0.01
-        # d¹, period=6: 1.0
-        assert abs(hcp_f_elec(1, 6) - 1.0) < 0.01
+        # d¹, period≥5 (including period=6): 1.5
+        assert abs(hcp_f_elec(1, 6) - 1.5) < 0.01
 
     def test_hcp_f_5d_lanthanide_off(self):
         """v10.1: ランタノイドには5d補正を適用しない"""
