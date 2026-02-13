@@ -211,7 +211,7 @@ def delta_sigma_cutting(r_nm: float, f: float, gamma: float, G: float, b: float)
     if r <= 0 or f <= 0 or gamma <= 0:
         return 0.0
     T_line = 0.5 * G * b**2
-    return M_TAYLOR * (gamma / (2 * b)) * np.sqrt(3 * PI * f * r / T_line) / 1e6
+    return M_TAYLOR * (gamma / (2 * b)) * np.sqrt(3 * PI * f * r / (2 * T_line)) / 1e6
 
 
 def delta_sigma_orowan(r_nm: float, f: float, G: float, b: float) -> float:
