@@ -106,11 +106,12 @@ betas, eps1s = flc.predict_curve('MySteel')  # All 7 modes!
 ## 📦 Repository Structure
 ```
 delta-theory/
-├── delta_theory/                      # 🔧 Main package
-│   ├── material.py                      # Data layer — 25 metals + SSOC params
-│   ├── ssoc.py                          # ★ Calculation layer — f_de (NEW!)
-│   ├── unified_yield_fatigue_v10.py      # Application layer — σ_y, τ/σ, S-N
-│   ├── unified_yield_fatigue_v6_9.py    # ← backward compat shim (re-exports v10)
+├── delta_theory/                       # 🔧 Main package
+│   ├── material.py                     # Data layer — 37 metals + SSOC params
+│   ├── ssoc.py                         # ★ Calculation layer — f_de (NEW!)
+│   ├── am_fatigue.py                   # ★ AM fatigue SNCurve
+│   ├── unified_yield_fatigue_v10.py    # Application layer — σ_y, τ/σ, S-N
+│   ├── unified_yield_fatigue_v6_9.py   # ← backward compat shim (re-exports v10)
 │   ├── unified_flc_v8_1.py             # FLC 7-mode discrete
 │   ├── dbt_unified.py                  # DBT/DBTT prediction model
 │   ├── lindemann.py                    # Iizumi-Lindemann melting law
