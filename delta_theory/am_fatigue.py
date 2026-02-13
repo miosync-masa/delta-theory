@@ -59,22 +59,98 @@ AM_PRESETS: Dict[str, AMFatiguePreset] = {
 }
 # fmt: on
 
-# AM alloy → crystal structure mapping
+# ---------------------------------------------------------------------------
+# AM Alloy Database: composition + structure + physical properties
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class AMAlloy:
+    """AM alloy definition with composition and physical properties."""
+    name: str
+    structure: Literal['BCC', 'FCC', 'HCP']
+    base_element: str                          # 母材元素 (Fe, Ni, Al, Ti, ...)
+    composition: Dict[str, float]              # wt% of solute elements
+    sigma_y_RT: Optional[float] = None         # typical RT yield [MPa] (AM, as-built~HT range)
+    sigma_uts_RT: Optional[float] = None       # typical RT UTS [MPa]
+    T_m: Optional[float] = None                # solidus temperature [K]
+    E_GPa: Optional[float] = None              # Young's modulus [GPa]
+
+
+# fmt: off
+# === 5 Representative AM Alloys (full composition) ===
+ALLOY_DB: Dict[str, AMAlloy] = {
+    # ─── FCC (Fe-based austenite) ───
+    '316L': AMAlloy(
+        name='316L', structure='FCC', base_element='Fe',
+        composition={
+            'Cr': 17.0, 'Ni': 12.0, 'Mo': 2.5,
+            'Mn': 2.0, 'Si': 1.0, 'C': 0.02,
+        },  # bal Fe ≈ 65.5 wt%
+        sigma_y_RT=450, sigma_uts_RT=600,  # AM typical
+        T_m=1673, E_GPa=193,
+    ),
+    # ─── FCC (Al-based) ───
+    'AlSi10Mg': AMAlloy(
+        name='AlSi10Mg', structure='FCC', base_element='Al',
+        composition={
+            'Si': 10.0, 'Mg': 0.35, 'Fe': 0.15,
+            'Mn': 0.05, 'Cu': 0.03,
+        },  # bal Al ≈ 89.4 wt%
+        sigma_y_RT=250, sigma_uts_RT=350,  # AM as-built typical
+        T_m=873, E_GPa=70,
+    ),
+    # ─── FCC (Ni-based superalloy) ───
+    'IN718': AMAlloy(
+        name='IN718', structure='FCC', base_element='Ni',
+        composition={
+            'Cr': 19.0, 'Fe': 18.5, 'Nb': 5.1,
+            'Mo': 3.0, 'Ti': 0.9, 'Al': 0.5, 'Co': 1.0,
+        },  # bal Ni ≈ 52.0 wt%
+        sigma_y_RT=800, sigma_uts_RT=1050,  # AM + HT typical
+        T_m=1573, E_GPa=200,
+    ),
+    # ─── BCC (martensitic PH) ───
+    '17-4 PH': AMAlloy(
+        name='17-4 PH', structure='BCC', base_element='Fe',
+        composition={
+            'Cr': 16.5, 'Ni': 4.0, 'Cu': 3.3,
+            'Nb': 0.30, 'Mn': 0.7, 'Si': 0.5, 'C': 0.04,
+        },  # bal Fe ≈ 74.7 wt%
+        sigma_y_RT=1050, sigma_uts_RT=1150,  # H900 condition
+        T_m=1723, E_GPa=197,
+    ),
+    # ─── HCP (Ti alloy) ───
+    'Ti-6Al-4V': AMAlloy(
+        name='Ti-6Al-4V', structure='HCP', base_element='Ti',
+        composition={
+            'Al': 6.0, 'V': 4.0, 'Fe': 0.2,
+            'O': 0.15,
+        },  # bal Ti ≈ 89.7 wt%
+        sigma_y_RT=900, sigma_uts_RT=1050,  # AM + stress relieved
+        T_m=1878, E_GPa=114,
+    ),
+}
+# fmt: on
+
+
+# AM alloy → crystal structure mapping (includes DB alloys + others)
 ALLOY_STRUCTURE: Dict[str, str] = {
+    # --- From ALLOY_DB (full composition available) ---
+    **{name: alloy.structure for name, alloy in ALLOY_DB.items()},
+    # --- Structure-only (composition TBD) ---
     # FCC
-    'AlSi10Mg': 'FCC', 'IN718': 'FCC', '316L': 'FCC', 'IN625': 'FCC',
-    'Scalmalloy': 'FCC', '304L': 'FCC', '304': 'FCC', 'Al-Mg-Sc-Zr': 'FCC',
-    'NiTi': 'FCC', 'CuAl9Ni5Fe4': 'FCC', 'Mar-M-509': 'FCC',
-    'GH4169': 'FCC', 'IN738LC': 'FCC', 'Fe40Mn20Co20Cr15Si5': 'FCC',
-    'QuesTek Al': 'FCC', 'AIF357': 'FCC', 'AD1': 'FCC',
-    'AlSi10Mg0.4': 'FCC', 'AlNiCu': 'FCC',
+    'IN625': 'FCC', 'Scalmalloy': 'FCC', '304L': 'FCC', '304': 'FCC',
+    'Al-Mg-Sc-Zr': 'FCC', 'NiTi': 'FCC', 'CuAl9Ni5Fe4': 'FCC',
+    'Mar-M-509': 'FCC', 'GH4169': 'FCC', 'IN738LC': 'FCC',
+    'Fe40Mn20Co20Cr15Si5': 'FCC', 'QuesTek Al': 'FCC', 'AIF357': 'FCC',
+    'AD1': 'FCC', 'AlSi10Mg0.4': 'FCC', 'AlNiCu': 'FCC',
     # BCC
-    '17-4 PH': 'BCC', '18Ni300': 'BCC', 'Maraging Steel': 'BCC',
+    '18Ni300': 'BCC', 'Maraging Steel': 'BCC',
     'Maraging Steel MS1': 'BCC',
     'CL 92PH stainless steel': 'BCC',
     '420J1 martensitic stainless steel': 'BCC',
     # HCP
-    'Ti-6Al-4V': 'HCP', 'TA2 + TA15': 'HCP', 'WE43': 'HCP',
+    'TA2 + TA15': 'HCP', 'WE43': 'HCP',
     'Ti-TiB': 'HCP', 'Ti-5Al-2.5Sn': 'HCP',
 }
 
@@ -265,6 +341,21 @@ def get_structure(alloy_name: str) -> str:
     )
 
 
+def get_alloy(alloy_name: str) -> AMAlloy:
+    """Get full alloy info from ALLOY_DB. Raises KeyError if not in DB."""
+    if alloy_name in ALLOY_DB:
+        return ALLOY_DB[alloy_name]
+    key_lower = alloy_name.lower().replace(' ', '').replace('-', '')
+    for name, alloy in ALLOY_DB.items():
+        if name.lower().replace(' ', '').replace('-', '') == key_lower:
+            return alloy
+    raise KeyError(
+        f"Alloy '{alloy_name}' not in composition DB. "
+        f"Available: {', '.join(sorted(ALLOY_DB.keys()))}. "
+        f"Use get_structure() for structure-only lookup."
+    )
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -366,12 +457,24 @@ def cmd_curve(args):
 
 def cmd_list(args):
     print(f"\n  Known AM Alloys ({len(ALLOY_STRUCTURE)})")
-    print(f"  {'='*50}")
+    print(f"  {'='*70}")
+    
+    # Full DB alloys first
+    if ALLOY_DB:
+        print(f"\n  ★ Full Composition DB ({len(ALLOY_DB)} alloys):")
+        for name, a in sorted(ALLOY_DB.items()):
+            comp_str = ', '.join(f'{v:.1f}{k}' for k, v in 
+                                 sorted(a.composition.items(), key=lambda x: -x[1]))
+            print(f"    {name:<15} {a.structure} (base: {a.base_element}) "
+                  f"σ_y≈{a.sigma_y_RT}  [{comp_str}]")
+    
+    # Structure-only alloys
+    print(f"\n  Structure-only alloys:")
     for struct in ['BCC', 'FCC', 'HCP']:
-        alloys = [k for k, v in ALLOY_STRUCTURE.items() if v == struct]
-        print(f"\n  {struct} ({len(alloys)}):")
-        for a in sorted(alloys):
-            print(f"    {a}")
+        alloys = [k for k, v in ALLOY_STRUCTURE.items() 
+                  if v == struct and k not in ALLOY_DB]
+        if alloys:
+            print(f"    {struct}: {', '.join(sorted(alloys))}")
     print()
 
 
