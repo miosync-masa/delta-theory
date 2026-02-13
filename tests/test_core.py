@@ -982,7 +982,7 @@ class TestPackageInit:
         """バージョン"""
         import delta_theory
 
-        assert delta_theory.__version__ == "10.0.5"
+        assert delta_theory.__version__ == "10.1.0"
 
     def test_material_and_unified_share_materials(self):
         """material.py と unified 側の MATERIALS が同一"""
