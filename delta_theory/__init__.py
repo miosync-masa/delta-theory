@@ -86,6 +86,9 @@ from .material import (
 # ==============================================================================
 # SSOC: Structure-Selective Orbital Coupling (v10.0 — NEW)
 # ==============================================================================
+# ==============================================================================
+# SSOC: Structure-Selective Orbital Coupling (v10.1)
+# ==============================================================================
 from .ssoc import (
     # Core calculation
     calc_f_de,
@@ -100,12 +103,15 @@ from .ssoc import (
     fcc_f_mu,
     fcc_f_shell,
     fcc_f_core,
+    fcc_f_lanthanide,        # v10.1: 4f結晶場ゲート
     
     # BCC SCC
     bcc_f_de,
     bcc_f_jt,
     bcc_f_5d,
     bcc_f_lattice,
+    bcc_f_complex,           # v10.1: 複雑構造ゲート
+    bcc_f_sp,                # v10.1: sp統合ゲート
     
     # HCP PCC
     hcp_f_de,
@@ -113,6 +119,8 @@ from .ssoc import (
     hcp_f_ca,
     hcp_f_5d as hcp_f_5d_corr,
     hcp_f_elec,
+    hcp_f_lanthanide,        # v10.1: 4fゲート
+    hcp_f_sp_cov,            # v10.1: sp共有結合ゲート
     
     # Constants
     P_DIM,
@@ -240,7 +248,7 @@ except ImportError:
 # ==============================================================================
 # Package Metadata
 # ==============================================================================
-__version__ = "10.1.0"
+__version__ = "10.2.0"
 __author__ = "Masamichi Iizumi & Tamaki"
 
 __all__ = [
@@ -260,7 +268,7 @@ __all__ = [
     "StructurePreset",
     "STRUCTURE_PRESETS",
     
-    # === SSOC (v10.0 — NEW) ===
+    # === SSOC (v10.1) ===
     "calc_f_de",
     "calc_f_de_detail",
     "sigma_base_v10",
@@ -271,15 +279,20 @@ __all__ = [
     "fcc_f_mu",
     "fcc_f_shell",
     "fcc_f_core",
+    "fcc_f_lanthanide",      # v10.1
     "bcc_f_de",
     "bcc_f_jt",
     "bcc_f_5d",
     "bcc_f_lattice",
+    "bcc_f_complex",         # v10.1
+    "bcc_f_sp",              # v10.1
     "hcp_f_de",
     "hcp_f_aniso",
     "hcp_f_ca",
     "hcp_f_5d_corr",
     "hcp_f_elec",
+    "hcp_f_lanthanide",      # v10.1
+    "hcp_f_sp_cov",          # v10.1
     "P_DIM",
     "M_SSOC",
     "FCC_MU_REF",
