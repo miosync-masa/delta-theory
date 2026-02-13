@@ -1,27 +1,21 @@
 """
-δ-theory 統合材料データベース (v10.0 SSOC)
+δ-theory 統合材料データベース (v10.1 SSOC — 37 metals)
+
+v10.1 変更点:
+  - Material に n_f (4f電子数), n_atoms_cell (単位格子原子数) 追加
+  - 既存金属に group (族番号) を全金属で明示
+  - BCC 新規: Li, Na, Mn, Sn (4金属追加, 計11)
+  - FCC 新規: Ce, In (2金属追加, 計12)
+  - HCP 新規: Co, Be, Sc, Y, Nd, Bi (6金属追加, 計14)
+  - 合計: 37金属
 
 v10.0 変更点:
   - δ_Lフリー式への移行: √(E_coh·k_B·T_m) が δ_L を置換
   - SSOC (Structure-Selective Orbital Coupling) パラメータ追加
-    FCC用: mu_GPa, gamma_isf
-    BCC用: group, sel
-    HCP用: R_crss
-    共通:  n_d, period
-  - f_d_elec は後方互換のため残存（SSOCではssoc.pyが計算）
-  - delta_L は後方互換のため残存（v10.0では不使用）
   - COEFF_V10 = 8√5/(5π) を定数として追加
 
-v7.0 → v10.0 公式の変更:
-  旧: σ_y = (E_bond × α × (b/d)² × f_d_elec / V_act) × (δ_L × HP / 2πM)
-  新: σ_y = (8√5/5πMZ) × α₀ × (b/d)² × f_de × √(E_coh·k_B·T_m) / V_act × HP
-
-  Key insight: δ_L ∝ √(k_B·T_m / E_coh) なので、
-    E_bond × δ_L ∝ √(E_coh · k_B · T_m)
-  v10.0 はこの関係を直接使い、δ_Lへの依存を排除。
-
 Author: 環 & ご主人さま (飯泉真道)
-Date: 2026-02-08
+Date: 2026-02-13
 ================================================================================
 """
 
@@ -98,29 +92,30 @@ STRUCTURE_PRESETS: Dict[str, StructurePreset] = {
 @dataclass(frozen=True)
 class Material:
     """
-    統合材料データベース (v10.0 SSOC)
-    
+    統合材料データベース (v10.1 SSOC — 37 metals)
+
     全てのδ理論モジュールで使用する材料パラメータを一元管理
-    
-    v10.0 SSOC:
+
+    v10.1 SSOC:
       σ_y = (COEFF/M·Z) × α₀ × BD2 × f_de × √(E_coh·k_B·T_m) / V_act × HP
-      
+
       f_de は ssoc.py で計算（material.py はデータのみ保持）
-      
+
       パラメータ分類:
         [データ層] material.py — 物質固有の測定値・量子数
         [計算層] ssoc.py — SSOC f_de計算ロジック
         [応用層] unified_yield_fatigue — σ_y → S-N統合
-    
+
     カテゴリ:
       [基本]   結晶構造、格子定数、弾性定数、熱物性
-      [SSOC]   n_d, period, group, sel, mu_GPa, gamma_isf, R_crss
+      [SSOC]   n_d, period, group, sel, n_f, n_atoms_cell,
+               mu_GPa, gamma_isf, R_crss
       [τ/σ]    せん断/引張比、双晶因子、圧縮/引張比
       [粒界]   分離仕事、偏析エネルギー (DBT用)
       [疲労]   熱軟化、Born崩壊、A_int
-      [後方互換] delta_L, f_d_elec (v7.0用、v10.0では不使用)
+      [後方互換] delta_L, f_d_elec (v7.0用、v10.0以降不使用)
     """
-    
+
     # ==========================================================================
     # [必須] 基本物性
     # ==========================================================================
@@ -133,89 +128,93 @@ class Material:
     rho: float                          # 密度 [kg/m³]
     M_amu: float                        # 原子質量 [amu]
     E_bond_eV: float                    # 結合エネルギー (= E_coh) [eV]
-    
+
     # ==========================================================================
     # [SSOC] 構造選択的軌道結合パラメータ
     # ==========================================================================
     n_d: int = 0                        # d電子数 (0-10)
-    period: int = 4                     # 周期 (3-6)
-    
+    period: int = 4                     # 周期 (2-6)
+    group: int = 0                      # 族番号 (全金属で明示, v10.1)
+
     # BCC SCC用
-    group: int = 0                      # 族番号 (5,6,8 for BCC)
     sel: int = 2                        # 選択子 (1 or 2, BCC Group5用)
-    
+
     # FCC PCC用
     mu_GPa: float = 0.0                 # 剪断弾性率 [GPa]
     gamma_isf: float = 100.0            # 積層欠陥エネルギー [mJ/m²]
-    
+
     # HCP PCC用
     R_crss: float = 1.0                 # CRSS異方性比 (prismatic/basal)
-    
+
+    # v10.1 新規
+    n_f: int = 0                        # 4f電子数 (ランタノイド用, 0-14)
+    n_atoms_cell: int = 2               # 単位格子内原子数 (α-Mn=58)
+
     # ==========================================================================
-    # [後方互換] v7.0パラメータ（v10.0では不使用）
+    # [後方互換] v7.0パラメータ（v10.0以降不使用）
     # ==========================================================================
-    delta_L: float = 0.10               # Lindemann閾値（v10.0で不要だが互換用に残存）
-    f_d_elec: float = 1.0              # 電子方向性係数（v10.0ではssoc.pyが計算）
-    
+    delta_L: float = 0.10               # Lindemann閾値
+    f_d_elec: float = 1.0              # 電子方向性係数
+
     # ==========================================================================
     # [オプション] デフォルト値あり
     # ==========================================================================
     # 熱物性
     alpha_thermal: float = 1.5e-5       # 線膨張係数 [1/K]
-    
+
     # τ/σ (v6.9用)
     c_a: float = 1.633                  # HCP c/a比 (FCC/BCCは使わない)
     T_twin: float = 1.0                 # 双晶因子 (引張)
     R_comp: float = 1.0                 # 圧縮/引張 比 (σ_c/σ_t)
     A_texture: float = 1.0              # 集合組織係数
-    
+
     # 粒界 (DBT用)
     W_sep0: float = 2.0                 # 基準分離仕事 [J/m²]
     delta_sep: float = 0.2e-9           # 分離変位 [m]
     E_seg_eV: float = 0.45              # 偏析エネルギー [eV]
-    
+
     # 疲労
     lambda_base: float = 25.0           # 熱軟化パラメータ
     kappa: float = 1.0                  # 非線形熱軟化係数
     fG: float = 0.10                    # Born崩壊係数
     A_int: float = 1.0                  # 内部スケール (Fe=1.0基準)
-    
+
     # 表示
     color: str = "#333333"              # プロット色
-    
+
     # ==========================================================================
     # 計算プロパティ
     # ==========================================================================
-    
+
     @property
     def preset(self) -> StructurePreset:
         return STRUCTURE_PRESETS[self.structure]
-    
+
     @property
     def Z_bulk(self) -> int:
         return self.preset.Z_bulk
-    
+
     @property
     def alpha0(self) -> float:
         return self.preset.alpha0
-    
+
     @property
     def M_taylor(self) -> float:
         return self.preset.M_taylor
-    
+
     @property
     def r_th(self) -> float:
         return self.preset.r_th
-    
+
     @property
     def n_cl(self) -> float:
         return self.preset.n_cl
-    
+
     @property
     def G(self) -> float:
         """剛性率 [Pa]"""
         return self.E / (2 * (1 + self.nu))
-    
+
     @property
     def b(self) -> float:
         """バーガースベクトル [m]"""
@@ -225,44 +224,39 @@ class Material:
             return self.a / np.sqrt(2)
         else:  # HCP
             return self.a
-    
+
     @property
     def V_act(self) -> float:
         """活性化体積 [m³]"""
         return self.b ** 3
-    
+
     @property
     def f_d(self) -> float:
         """後方互換: 旧 f_d = BD_RATIO_SQ × f_d_elec"""
         return BD_RATIO_SQ * self.f_d_elec
-    
+
     @property
     def E_eff_v7(self) -> float:
-        """v7.0 有効結合エネルギー [J] (後方互換)
-        E_eff = E_bond × α₀ × (b/d)² × f_d_elec
-        """
+        """v7.0 有効結合エネルギー [J] (後方互換)"""
         return self.E_bond_eV * eV_to_J * self.alpha0 * BD_RATIO_SQ * self.f_d_elec
-    
+
     @property
     def E_eff(self) -> float:
         """有効結合エネルギー [J] — v7.0互換エイリアス"""
         return self.E_eff_v7
-    
+
     @property
     def sqrt_EkT(self) -> float:
-        """v10.0 コアエネルギー項: √(E_coh · k_B · T_m) [J]
-        
-        δ_Lフリーの核心: E_bond × δ_L ∝ √(E_coh · k_B · T_m)
-        """
+        """v10.0 コアエネルギー項: √(E_coh · k_B · T_m) [J]"""
         return np.sqrt(self.E_bond_eV * eV_to_J * k_B * self.T_m)
-    
+
     # ==========================================================================
     # 表示
     # ==========================================================================
-    
+
     def __str__(self) -> str:
         return f"Material({self.name}, {self.structure}, T_m={self.T_m}K)"
-    
+
     def summary(self) -> str:
         ssoc_info = ""
         if self.structure == "FCC":
@@ -270,41 +264,47 @@ class Material:
     γ_isf      = {self.gamma_isf} mJ/m²"""
         elif self.structure == "BCC":
             ssoc_info = f"""    group      = {self.group}
-    sel        = {self.sel}"""
+    sel        = {self.sel}
+    n_atoms    = {self.n_atoms_cell}"""
         elif self.structure == "HCP":
             ssoc_info = f"""    R_crss     = {self.R_crss}
     c/a        = {self.c_a}"""
-        
+
+        f_info = ""
+        if self.n_f > 0:
+            f_info = f"\n    n_f        = {self.n_f}"
+
         return f"""
 {'='*60}
-Material: {self.name} ({self.structure})  [v10.0 SSOC]
+Material: {self.name} ({self.structure})  [v10.1 SSOC]
 {'='*60}
   [基本]
-    a          = {self.a*1e10:.3f} Å
-    T_m        = {self.T_m:.0f} K
+    a          = {self.a*1e10:.4f} Å
+    T_m        = {self.T_m:.1f} K
     E          = {self.E/1e9:.0f} GPa
     G          = {self.G/1e9:.1f} GPa
     ν          = {self.nu}
     ρ          = {self.rho} kg/m³
-  
+
   [SSOC]  σ_y = (8√5/5πMZ) × α₀ × (3/2) × f_de × √(E·kT) / V × HP
     n_d        = {self.n_d}
     period     = {self.period}
+    group      = {self.group}
     E_bond     = {self.E_bond_eV} eV
     √(E·kT)   = {self.sqrt_EkT:.4e} J
     α₀         = {self.alpha0}  [preset]
-    b          = {self.b*1e10:.3f} Å
+    b          = {self.b*1e10:.4f} Å{f_info}
 {ssoc_info}
-  
+
   [v7.0互換]
-    δ_L        = {self.delta_L}  (v10.0では不使用)
-    f_d_elec   = {self.f_d_elec:.4f}  (v10.0ではssocが計算)
-  
+    δ_L        = {self.delta_L}  (v10.0以降不使用)
+    f_d_elec   = {self.f_d_elec:.4f}  (v10.0以降ssocが計算)
+
   [τ/σ]
     T_twin     = {self.T_twin}
     R_comp     = {self.R_comp}
     A_texture  = {self.A_texture}
-  
+
   [疲労]
     r_th       = {self.r_th} (preset)
     n_cl       = {self.n_cl} (preset)
@@ -314,12 +314,12 @@ Material: {self.name} ({self.structure})  [v10.0 SSOC]
 
 
 # ==============================================================================
-# 材料データベース
+# 材料データベース — 37金属
 # ==============================================================================
 
-# --------------------------------------------------------------------------
-# BCC 金属
-# --------------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════
+# BCC 金属 (11)
+# ══════════════════════════════════════════════════════════════════════════
 
 Fe = Material(
     name="Fe",
@@ -367,9 +367,6 @@ W = Material(
     # v7.0互換
     delta_L=0.16,
     f_d_elec=47/15,
-    # τ/σ
-    T_twin=1.0,
-    R_comp=1.0,
     # 疲労
     alpha_thermal=4.51e-6,
     lambda_base=10.9,
@@ -484,9 +481,85 @@ Ta = Material(
     color="#c49c94",
 )
 
-# --------------------------------------------------------------------------
-# FCC 金属
-# --------------------------------------------------------------------------
+# --- v10.1 BCC 新規 ---
+
+Li = Material(
+    name="Li",
+    structure="BCC",
+    a=3.51e-10,
+    T_m=453.65,
+    E=4.9e9,
+    nu=0.36,
+    rho=534,
+    M_amu=6.941,
+    E_bond_eV=1.63,
+    # SSOC (SCC — sp branch)
+    n_d=0, period=2, group=1, sel=0,
+    # 疲労
+    alpha_thermal=4.6e-5,
+    A_int=0.30,
+    color="#d6616b",
+)
+
+Na = Material(
+    name="Na",
+    structure="BCC",
+    a=4.29e-10,
+    T_m=370.944,
+    E=10e9,
+    nu=0.32,
+    rho=968,
+    M_amu=22.990,
+    E_bond_eV=1.11,
+    # SSOC (SCC — sp branch)
+    n_d=0, period=3, group=1, sel=0,
+    # 疲労
+    alpha_thermal=7.1e-5,
+    A_int=0.20,
+    color="#e7ba52",
+)
+
+Mn = Material(
+    name="Mn",
+    structure="BCC",
+    a=2.893e-10,
+    T_m=1519,
+    E=198e9,
+    nu=0.24,
+    rho=7470,
+    M_amu=54.938,
+    E_bond_eV=2.92,
+    # SSOC (SCC)
+    n_d=5, period=4, group=7, sel=2,
+    n_atoms_cell=58,     # α-Mn: 58 atoms/cell
+    # 疲労
+    alpha_thermal=2.17e-5,
+    A_int=0.80,
+    color="#ad494a",
+)
+
+Sn = Material(
+    name="Sn",
+    structure="BCC",
+    a=3.70e-10,
+    T_m=505.08,
+    E=50e9,
+    nu=0.36,
+    rho=7265,
+    M_amu=118.71,
+    E_bond_eV=3.14,
+    # SSOC (SCC — p-block d¹⁰ branch)
+    n_d=10, period=5, group=14, sel=2,
+    # 疲労
+    alpha_thermal=2.2e-5,
+    A_int=0.50,
+    color="#8c6d31",
+)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# FCC 金属 (12)
+# ══════════════════════════════════════════════════════════════════════════
 
 Cu = Material(
     name="Cu",
@@ -499,7 +572,8 @@ Cu = Material(
     M_amu=63.546,
     E_bond_eV=3.49,
     # SSOC (PCC)
-    n_d=10, period=4, mu_GPa=48.0, gamma_isf=45.0,
+    n_d=10, period=4, group=11,
+    mu_GPa=48.0, gamma_isf=45.0,
     # v7.0互換
     delta_L=0.10,
     f_d_elec=4/3,
@@ -526,7 +600,8 @@ Al = Material(
     M_amu=26.982,
     E_bond_eV=3.39,
     # SSOC (PCC)
-    n_d=0, period=3, mu_GPa=26.0, gamma_isf=166.0,
+    n_d=0, period=3, group=13,
+    mu_GPa=26.0, gamma_isf=166.0,
     # v7.0互換
     delta_L=0.10,
     f_d_elec=16/15,
@@ -553,7 +628,8 @@ Ni = Material(
     M_amu=58.693,
     E_bond_eV=4.44,
     # SSOC (PCC)
-    n_d=8, period=4, mu_GPa=76.0, gamma_isf=125.0,
+    n_d=8, period=4, group=10,
+    mu_GPa=76.0, gamma_isf=125.0,
     # v7.0互換
     delta_L=0.11,
     f_d_elec=26/15,
@@ -580,7 +656,8 @@ Au = Material(
     M_amu=196.967,
     E_bond_eV=3.81,
     # SSOC (PCC)
-    n_d=10, period=6, mu_GPa=27.0, gamma_isf=32.0,
+    n_d=10, period=6, group=11,
+    mu_GPa=27.0, gamma_isf=32.0,
     # v7.0互換
     delta_L=0.10,
     f_d_elec=11/15,
@@ -607,7 +684,8 @@ Ag = Material(
     M_amu=107.868,
     E_bond_eV=2.95,
     # SSOC (PCC)
-    n_d=10, period=5, mu_GPa=30.0, gamma_isf=16.0,
+    n_d=10, period=5, group=11,
+    mu_GPa=30.0, gamma_isf=16.0,
     # v7.0互換
     delta_L=0.10,
     f_d_elec=4/3,
@@ -634,7 +712,8 @@ Pt = Material(
     M_amu=195.084,
     E_bond_eV=5.84,
     # SSOC (PCC)
-    n_d=9, period=6, mu_GPa=61.0, gamma_isf=322.0,
+    n_d=9, period=6, group=10,
+    mu_GPa=61.0, gamma_isf=322.0,
     # v7.0互換
     delta_L=0.10,
     f_d_elec=1.0,
@@ -655,7 +734,8 @@ Pd = Material(
     M_amu=106.42,
     E_bond_eV=3.89,
     # SSOC (PCC)
-    n_d=10, period=5, mu_GPa=44.0, gamma_isf=180.0,
+    n_d=10, period=5, group=10,
+    mu_GPa=44.0, gamma_isf=180.0,
     # v7.0互換
     delta_L=0.10,
     f_d_elec=1.0,
@@ -676,7 +756,8 @@ Ir = Material(
     M_amu=192.217,
     E_bond_eV=6.94,
     # SSOC (PCC)
-    n_d=7, period=6, mu_GPa=210.0, gamma_isf=300.0,
+    n_d=7, period=6, group=9,
+    mu_GPa=210.0, gamma_isf=300.0,
     # v7.0互換
     delta_L=0.10,
     f_d_elec=1.0,
@@ -697,7 +778,8 @@ Rh = Material(
     M_amu=102.906,
     E_bond_eV=5.75,
     # SSOC (PCC)
-    n_d=8, period=5, mu_GPa=150.0, gamma_isf=350.0,
+    n_d=8, period=5, group=9,
+    mu_GPa=150.0, gamma_isf=350.0,
     # v7.0互換
     delta_L=0.10,
     f_d_elec=1.0,
@@ -718,7 +800,8 @@ Pb = Material(
     M_amu=207.2,
     E_bond_eV=2.03,
     # SSOC (PCC)
-    n_d=0, period=6, mu_GPa=5.6, gamma_isf=300.0,
+    n_d=0, period=6, group=14,
+    mu_GPa=5.6, gamma_isf=300.0,
     # v7.0互換
     delta_L=0.12,
     f_d_elec=1.0,
@@ -728,10 +811,51 @@ Pb = Material(
     color="#c49c94",
 )
 
+# --- v10.1 FCC 新規 ---
 
-# --------------------------------------------------------------------------
-# HCP 金属
-# --------------------------------------------------------------------------
+Ce = Material(
+    name="Ce",
+    structure="FCC",
+    a=5.161e-10,
+    T_m=1068,
+    E=34e9,
+    nu=0.24,
+    rho=6770,
+    M_amu=140.116,
+    E_bond_eV=4.32,
+    # SSOC (PCC + lanthanide gate)
+    n_d=1, period=6, group=3,
+    n_f=1,                       # γ-Ce: 4f¹5d¹
+    mu_GPa=14.0, gamma_isf=100.0,
+    # 疲労
+    alpha_thermal=5.2e-6,
+    A_int=0.50,
+    color="#b5cf6b",
+)
+
+In = Material(
+    name="In",
+    structure="FCC",
+    a=4.60e-10,
+    T_m=429.75,
+    E=11e9,
+    nu=0.45,
+    rho=7310,
+    M_amu=114.818,
+    E_bond_eV=2.52,
+    # SSOC (PCC — p-block, g_d=0)
+    n_d=10, period=5, group=13,
+    mu_GPa=3.7, gamma_isf=100.0,
+    # 疲労
+    alpha_thermal=3.29e-5,
+    A_int=0.30,
+    color="#cedb9c",
+)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# HCP 金属 (14)
+# ══════════════════════════════════════════════════════════════════════════
 
 Ti = Material(
     name="Ti",
@@ -744,7 +868,8 @@ Ti = Material(
     M_amu=47.867,
     E_bond_eV=4.85,
     # SSOC (PCC)
-    n_d=2, period=4, R_crss=0.65,
+    n_d=2, period=4, group=4,
+    R_crss=0.65,
     c_a=1.587,
     # v7.0互換
     delta_L=0.10,
@@ -772,7 +897,8 @@ Mg = Material(
     M_amu=24.305,
     E_bond_eV=1.51,
     # SSOC (PCC)
-    n_d=0, period=3, R_crss=75.0,
+    n_d=0, period=3, group=2,
+    R_crss=75.0,
     c_a=1.624,
     # v7.0互換
     delta_L=0.117,
@@ -800,7 +926,8 @@ Zn = Material(
     M_amu=65.38,
     E_bond_eV=1.35,
     # SSOC (PCC)
-    n_d=10, period=4, R_crss=2.0,
+    n_d=10, period=4, group=12,
+    R_crss=2.0,
     c_a=1.856,
     # v7.0互換
     delta_L=0.12,
@@ -828,7 +955,8 @@ Zr = Material(
     M_amu=91.224,
     E_bond_eV=6.25,
     # SSOC (PCC)
-    n_d=2, period=5, R_crss=0.50,
+    n_d=2, period=5, group=4,
+    R_crss=0.50,
     c_a=1.593,
     # v7.0互換
     delta_L=0.10,
@@ -850,7 +978,8 @@ Hf = Material(
     M_amu=178.49,
     E_bond_eV=6.44,
     # SSOC (PCC)
-    n_d=2, period=6, R_crss=0.55,
+    n_d=2, period=6, group=4,
+    R_crss=0.55,
     c_a=1.581,
     # v7.0互換
     delta_L=0.10,
@@ -872,7 +1001,8 @@ Re = Material(
     M_amu=186.207,
     E_bond_eV=8.03,
     # SSOC (PCC)
-    n_d=5, period=6, R_crss=5.0,
+    n_d=5, period=6, group=7,
+    R_crss=5.0,
     c_a=1.615,
     # v7.0互換
     delta_L=0.10,
@@ -894,7 +1024,8 @@ Cd = Material(
     M_amu=112.414,
     E_bond_eV=1.16,
     # SSOC (PCC)
-    n_d=10, period=5, R_crss=1.5,
+    n_d=10, period=5, group=12,
+    R_crss=1.5,
     c_a=1.886,
     # v7.0互換
     delta_L=0.12,
@@ -916,7 +1047,8 @@ Ru = Material(
     M_amu=101.07,
     E_bond_eV=6.74,
     # SSOC (PCC)
-    n_d=7, period=5, R_crss=3.0,
+    n_d=7, period=5, group=8,
+    R_crss=3.0,
     c_a=1.582,
     # v7.0互換
     delta_L=0.10,
@@ -927,13 +1059,136 @@ Ru = Material(
     color="#8ca252",
 )
 
+# --- v10.1 HCP 新規 ---
+
+Co = Material(
+    name="Co",
+    structure="HCP",
+    a=2.5071e-10,
+    T_m=1768,
+    E=209e9,
+    nu=0.31,
+    rho=8900,
+    M_amu=58.933,
+    E_bond_eV=4.39,
+    # SSOC (PCC)
+    n_d=7, period=4, group=9,
+    R_crss=2.2,
+    c_a=1.6232,
+    # 疲労
+    alpha_thermal=1.3e-5,
+    A_int=1.20,
+    color="#393b79",
+)
+
+Be = Material(
+    name="Be",
+    structure="HCP",
+    a=2.2858e-10,
+    T_m=1560,
+    E=287e9,
+    nu=0.032,
+    rho=1850,
+    M_amu=9.012,
+    E_bond_eV=3.32,
+    # SSOC (PCC + sp_cov gate)
+    n_d=0, period=2, group=2,
+    R_crss=0.8,
+    c_a=1.5681,
+    # 疲労
+    alpha_thermal=1.13e-5,
+    A_int=1.0,
+    color="#5254a3",
+)
+
+Sc = Material(
+    name="Sc",
+    structure="HCP",
+    a=3.309e-10,
+    T_m=1814,
+    E=74e9,
+    nu=0.28,
+    rho=2985,
+    M_amu=44.956,
+    E_bond_eV=3.90,
+    # SSOC (PCC — d¹ gate)
+    n_d=1, period=4, group=3,
+    R_crss=1.2,
+    c_a=1.5936,
+    # 疲労
+    alpha_thermal=1.02e-5,
+    A_int=0.80,
+    color="#6b6ecf",
+)
+
+Y = Material(
+    name="Y",
+    structure="HCP",
+    a=3.6482e-10,
+    T_m=1799,
+    E=64e9,
+    nu=0.24,
+    rho=4472,
+    M_amu=88.906,
+    E_bond_eV=4.37,
+    # SSOC (PCC — d¹ gate)
+    n_d=1, period=5, group=3,
+    R_crss=1.0,
+    c_a=1.5711,
+    # 疲労
+    alpha_thermal=1.06e-5,
+    A_int=0.70,
+    color="#9c9ede",
+)
+
+Nd = Material(
+    name="Nd",
+    structure="HCP",
+    a=3.6582e-10,
+    T_m=1297,
+    E=41e9,
+    nu=0.28,
+    rho=7010,
+    M_amu=144.242,
+    E_bond_eV=3.40,
+    # SSOC (PCC + lanthanide 4f gate)
+    n_d=0, period=6, group=3,
+    n_f=4,                       # DHCP, 4f⁴
+    R_crss=1.0,
+    c_a=1.6124,
+    # 疲労
+    alpha_thermal=9.6e-6,
+    A_int=0.50,
+    color="#b5cf6b",
+)
+
+Bi = Material(
+    name="Bi",
+    structure="HCP",
+    a=4.546e-10,
+    T_m=544.55,
+    E=32e9,
+    nu=0.33,
+    rho=9780,
+    M_amu=208.980,
+    E_bond_eV=2.18,
+    # SSOC (PCC)
+    n_d=10, period=6, group=15,
+    R_crss=2.0,
+    c_a=1.308,
+    # 疲労
+    alpha_thermal=1.34e-5,
+    A_int=0.30,
+    color="#e7cb94",
+)
+
 
 # ==============================================================================
 # 材料データベース辞書
 # ==============================================================================
 
 MATERIALS: Dict[str, Material] = {
-    # BCC
+    # BCC (11)
     "Fe": Fe, "Iron": Fe, "SECD": Fe,
     "W": W, "Tungsten": W,
     "V": V_metal, "Vanadium": V_metal,
@@ -941,7 +1196,11 @@ MATERIALS: Dict[str, Material] = {
     "Nb": Nb, "Niobium": Nb,
     "Mo": Mo, "Molybdenum": Mo,
     "Ta": Ta, "Tantalum": Ta,
-    # FCC
+    "Li": Li, "Lithium": Li,
+    "Na": Na, "Sodium": Na,
+    "Mn": Mn, "Manganese": Mn,
+    "Sn": Sn, "Tin": Sn,
+    # FCC (12)
     "Cu": Cu, "Copper": Cu, "FCC_Cu": Cu,
     "Al": Al, "Aluminum": Al,
     "Ni": Ni, "Nickel": Ni,
@@ -952,7 +1211,9 @@ MATERIALS: Dict[str, Material] = {
     "Ir": Ir, "Iridium": Ir,
     "Rh": Rh, "Rhodium": Rh,
     "Pb": Pb, "Lead": Pb,
-    # HCP
+    "Ce": Ce, "Cerium": Ce,
+    "In": In, "Indium": In,
+    # HCP (14)
     "Ti": Ti, "Titanium": Ti,
     "Mg": Mg, "Magnesium": Mg,
     "Zn": Zn, "Zinc": Zn,
@@ -961,6 +1222,12 @@ MATERIALS: Dict[str, Material] = {
     "Re": Re, "Rhenium": Re,
     "Cd": Cd, "Cadmium": Cd,
     "Ru": Ru, "Ruthenium": Ru,
+    "Co": Co, "Cobalt": Co,
+    "Be": Be, "Beryllium": Be,
+    "Sc": Sc, "Scandium": Sc,
+    "Y": Y, "Yttrium": Y,
+    "Nd": Nd, "Neodymium": Nd,
+    "Bi": Bi, "Bismuth": Bi,
 }
 
 
@@ -994,24 +1261,44 @@ def list_by_structure(structure: str) -> List[str]:
 # ==============================================================================
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("統合材料データベース テスト (v10.0 SSOC)")
-    print("=" * 60)
-    
-    print(f"\n[利用可能な材料] ({len(list_materials())}種)")
-    print(f"  BCC ({len(list_by_structure('BCC'))}): {list_by_structure('BCC')}")
-    print(f"  FCC ({len(list_by_structure('FCC'))}): {list_by_structure('FCC')}")
-    print(f"  HCP ({len(list_by_structure('HCP'))}): {list_by_structure('HCP')}")
-    
-    print("\n[SSОCパラメータ確認]")
-    print(f"  {'Metal':<4} {'Str':>3} {'n_d':>3} {'per':>3} {'grp':>3} {'sel':>3} "
-          f"{'μ':>5} {'γ':>5} {'R':>5} {'√EkT':>10}")
-    print(f"  {'-'*55}")
-    for name in list_materials():
+    print("=" * 80)
+    print("統合材料データベース テスト (v10.1 SSOC — 37 metals)")
+    print("=" * 80)
+
+    all_metals = list_materials()
+    bcc = list_by_structure('BCC')
+    fcc = list_by_structure('FCC')
+    hcp = list_by_structure('HCP')
+
+    print(f"\n[利用可能な材料] ({len(all_metals)}種)")
+    print(f"  BCC ({len(bcc)}): {bcc}")
+    print(f"  FCC ({len(fcc)}): {fcc}")
+    print(f"  HCP ({len(hcp)}): {hcp}")
+
+    print(f"\n[SSOCパラメータ確認]")
+    print(f"  {'Metal':<4} {'Str':>3} {'nd':>3} {'nf':>2} {'per':>3} {'grp':>3} "
+          f"{'sel':>3} {'Nat':>3} {'μ':>5} {'γ':>5} {'R':>5} "
+          f"{'c/a':>6} {'√EkT':>10}")
+    print(f"  {'-'*75}")
+    for name in all_metals:
         mat = MATERIALS[name]
-        print(f"  {name:<4} {mat.structure:>3} {mat.n_d:>3} {mat.period:>3} "
-              f"{mat.group:>3} {mat.sel:>3} "
+        print(f"  {name:<4} {mat.structure:>3} {mat.n_d:>3} {mat.n_f:>2} "
+              f"{mat.period:>3} {mat.group:>3} "
+              f"{mat.sel:>3} {mat.n_atoms_cell:>3} "
               f"{mat.mu_GPa:>5.1f} {mat.gamma_isf:>5.0f} {mat.R_crss:>5.2f} "
-              f"{mat.sqrt_EkT:>10.4e}")
-    
-    print("\n✅ テスト完了!")
+              f"{mat.c_a:>6.3f} {mat.sqrt_EkT:>10.4e}")
+
+    # v10.1 新規金属チェック
+    new_metals = ['Li', 'Na', 'Mn', 'Sn', 'Ce', 'In', 'Co', 'Be', 'Sc', 'Y', 'Nd', 'Bi']
+    print(f"\n[v10.1 新規金属 ({len(new_metals)})]")
+    for name in new_metals:
+        mat = MATERIALS[name]
+        extra = ""
+        if mat.n_f > 0:
+            extra += f" n_f={mat.n_f}"
+        if mat.n_atoms_cell > 2:
+            extra += f" Nat={mat.n_atoms_cell}"
+        print(f"  {name:<4} {mat.structure:>3} nd={mat.n_d} per={mat.period} "
+              f"grp={mat.group}{extra}")
+
+    print("\n✅ v10.1 テスト完了!")
