@@ -231,6 +231,38 @@ except ImportError:
     MATERIAL_FE = None
 
 # ==============================================================================
+# Creep: SSOC-based Diffusion & Creep (v10.2)
+# ==============================================================================
+from .creep import (
+    # Core prediction
+    Q_self_eV,
+    Q_form_eV,
+    Q_mig_eV,
+    diffusion_coeff,
+    D0_prefactor,
+    debye_frequency,
+    
+    # Creep rates
+    creep_rate_NH,
+    creep_rate_Coble,
+    creep_rate_total,
+    time_to_strain,
+    
+    # SSOC diffusion gate
+    g_ssoc,
+    g_ssoc_bcc,
+    g_ssoc_fcc,
+    g_ssoc_hcp,
+    
+    # Diagnostics
+    diffusion_detail,
+    
+    # Constants
+    Q_BASE,
+    C_F,
+)
+
+# ==============================================================================
 # lindemann.py exports (lazy import)
 # ==============================================================================
 # Imported lazily via __getattr__ to prevent RuntimeWarning
