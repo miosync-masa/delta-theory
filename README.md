@@ -30,6 +30,8 @@ $$\Lambda = \frac{K}{|V|_{\text{eff}}}$$
 
 | Module | Predicts | Method | Accuracy |
 |--------|----------|--------|----------|
+| **v10.3** | Creep Module| Q_self = k_B × T_m × Q_base(struct) × g_ssoc(pattern)| **3.5%** (20 metals) |
+| **v10.2** | AM Alloy Fatigue Module| N = min( N_init + N_prop,  N_static ) | **3.2%** (25 metals) |
 | **v10.0** | Yield stress σ_y | SSOC f_de (δ_L-free) | **3.2%** (25 metals) |
 | **v4.1** | τ/σ, R_comp | α-coefficient geometry | Cu-calibrated |
 | **v6.10** | Fatigue life N | r_th (BCC=0.65, FCC=0.02, HCP=0.20) | 4-7% |
