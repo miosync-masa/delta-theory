@@ -12,17 +12,20 @@ Physical model:
   N_static = D × (1 - r/r_u)^p         — 静的破壊上限
 
   r    = σ_a / σ_y    （応力比, 温度依存: σ_y(T)経由）
-  r_u  = σ_uts / σ_y  （延性余裕, per-sample）
+  r_u  = σ_uts / σ_y  （延性余裕, 定比: r_u = σ_uts(RT)/σ_y(RT)）
 
 Parameters:
   A, n     — 伝播: 構造プリセット（BCC/FCC/HCP）
   C, m     — 核生成: 構造プリセット
   D, p     — 静的破壊: 構造プリセット
   σ_y(T)   — unified_yield_fatigue_v10 から取得
-  σ_uts    — 入力（実験値 or DB）
+  σ_uts(T) — r_u × σ_y(T) で自動スケーリング
+              r_u = σ_uts(RT) / σ_y(RT) は室温入力から1回だけ決定
 
 Temperature enters via σ_y(T):
-  T↑ → σ_y↓ → r↑ → N↓  (自動的に温度効果が入る)
+  T↑ → σ_y↓ → r↑ → N_init↓, N_prop↓
+  T↑ → σ_uts↓ → σ_a/σ_uts↑ → N_static↓
+  （r_u = const → σ_yの約分が起きない）
 
 Author: 飯泉真道 & 環
 Date: 2026-02
