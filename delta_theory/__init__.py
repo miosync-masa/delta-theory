@@ -386,6 +386,25 @@ __all__ = [
     "SegregationView",
     "MATERIAL_FE",
 
+     # === Creep & Diffusion (v10.2) ===
+    "Q_self_eV",
+    "Q_form_eV",
+    "Q_mig_eV",
+    "diffusion_coeff",
+    "D0_prefactor",
+    "debye_frequency",
+    "creep_rate_NH",
+    "creep_rate_Coble",
+    "creep_rate_total",
+    "time_to_strain",
+    "g_ssoc",
+    "g_ssoc_bcc",
+    "g_ssoc_fcc",
+    "g_ssoc_hcp",
+    "diffusion_detail",
+    "Q_BASE",
+    "C_F",
+
     # === Lindemann ===
     "iizumi_lindemann",
     "conventional_lindemann", 
@@ -409,7 +428,6 @@ __all__ = [
     "info",
 ]
 
-
 # ==============================================================================
 # Quick Reference
 # ==============================================================================
@@ -418,28 +436,28 @@ def info():
     show_banner()  # 🎲 Random banner every time!
     print(f"""
 ╔══════════════════════════════════════════════════════════════════════╗
-║  δ-Theory Core Library v{__version__}                                    ║
+║  δ-Theory Core Library v{__version__}                                ║
 ║  "Nature is Geometry"                                                ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║                                                                      ║
-║  YIELD STRESS (v10.0 — SSOC δ_L-free)                               ║
-║    σ_y = (8√5/5πMZ) × α₀ × (b/d)² × f_de × √(E·k_BT_m) / V × HP  ║
+║  YIELD STRESS (v10.0 — SSOC δ_L-free)                                ║
+║    σ_y = (8√5/5πMZ) × α₀ × (b/d)² × f_de × √(E·k_BT_m) / V × HP      ║
 ║                                                                      ║
-║    Pure geometry:  α₀, (b/d)²=3/2, V_act=b³, HP, 8√5/5π            ║
+║    Pure geometry:  α₀, (b/d)²=3/2, V_act=b³, HP, 8√5/5π              ║
 ║    Experimental:   E_coh (cohesive), T_m (melting point)             ║
-║    SSOC:           f_de (structure-selective orbital coupling)        ║
+║    SSOC:           f_de (structure-selective orbital coupling)       ║
 ║                                                                      ║
 ║    3-Layer Architecture:                                             ║
-║      material.py  → Data layer  (SSOC parameters)                   ║
-║      ssoc.py      → Calc layer  (f_de + σ_base)                     ║
-║      unified_*    → App layer   (σ_y → S-N → FLC)                   ║
+║      material.py  → Data layer  (SSOC parameters)                    ║
+║      ssoc.py      → Calc layer  (f_de + σ_base)                      ║
+║      unified_*    → App layer   (σ_y → S-N → FLC)                    ║
 ║                                                                      ║
 ║    SSOC Channels:                                                    ║
-║      FCC — PCC: f_de = (μ/μ_ref)^(2/3·g_d) × f_shell × f_core      ║
-║      BCC — SCC: f_de = f_JT × f_5d × f_lat  (d⁴ anomaly)           ║
-║      HCP — PCC: f_de = f_elec × f_aniso(R) × f_ca × f_5d           ║
+║      FCC — PCC: f_de = (μ/μ_ref)^(2/3·g_d) × f_shell × f_core        ║
+║      BCC — SCC: f_de = f_JT × f_5d × f_lat  (d⁴ anomaly)             ║
+║      HCP — PCC: f_de = f_elec × f_aniso(R) × f_ca × f_5d             ║
 ║                                                                      ║
-║    Mean error: 3.2% across 25 metals (ZERO fitting parameters)       ║
+║    Mean error: 3.2% across 35 metals (ZERO fitting parameters)       ║
 ║    >>> calc_sigma_y(MATERIALS['Fe'])                                 ║
 ║    >>> calc_f_de(MATERIALS['Fe'])                                    ║
 ║    >>> sigma_base_v10(MATERIALS['Fe'])                               ║
@@ -447,12 +465,12 @@ def info():
 ║  FATIGUE LIFE                                                        ║
 ║    Pure metal (v10.0): per-material A_int, academic precision        ║
 ║    AM alloy  (v10.1): structure presets, practical prediction        ║
-║      N = min( C×r^(-m) + 0.5/(A×r^n),  D×(1-r/r_u)^p )             ║
-║      3040 points, 30 alloys, RMSE=1.113 (logN)                      ║
-║      BCC: 0.699 | FCC: 1.050 | HCP: 1.376                          ║
-║      Temperature S-N via σ_y(T) passthrough                         ║
-║    >>> am_fatigue_life(200, 900, 1050, 'HCP')                       ║
-║    >>> am_sn_curve(900, 1050, 'HCP')                                ║
+║      N = min( C×r^(-m) + 0.5/(A×r^n),  D×(1-r/r_u)^p )               ║
+║      3040 points, 30 alloys, RMSE=1.113 (logN)                       ║
+║      BCC: 0.699 | FCC: 1.050 | HCP: 1.376                            ║
+║      Temperature S-N via σ_y(T) passthrough                          ║
+║    >>> am_fatigue_life(200, 900, 1050, 'HCP')                        ║
+║    >>> am_sn_curve(900, 1050, 'HCP')                                 ║
 ║                                                                      ║
 ║  FLC v8.1 - 7-MODE DISCRETE FORMULATION                              ║
 ║    ε₁,j = |V|_eff × C_j / R_j                                        ║
@@ -468,16 +486,25 @@ def info():
 ║    3 views: Grain size / Temperature / Segregation (time)            ║
 ║    >>> DBTUnified().predict_dbtt(material, grain_size)               ║
 ║                                                                      ║
+║  CREEP & DIFFUSION (v10.2 — SSOC Rule Dispatch)                      ║
+║    Q_self = k_B × T_m × Q_base(struct) × g_ssoc(pattern)             ║
+║    D = ν × a² × exp(-Q_self / k_BT)                                  ║
+║    ε̇ = A × D × σ × Ω / (kT × d²)                                     ║
+║    g_ssoc: same SSOC pattern as f_de, 0 new parameters               ║
+║    MAE: 3.5% across 20 metals (3 structures)                         ║
+║    >>> Q_self_eV(MATERIALS['Fe'])                                    ║
+║    >>> diffusion_coeff(MATERIALS['Fe'], 900)                         ║
+║    >>> creep_rate_total(MATERIALS['Fe'], 900, 50, 50e-6)             ║
+║                                                                      ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║  Core Principle:                                                     ║
-║    Λ = K / |V|_eff    (Λ > 1 → yield/fracture)                      ║
+║    Λ = K / |V|_eff    (Λ > 1 → yield/fracture)                       ║
 ║    "The same geometry governs materials and particles"               ║
-║    Materials: (b/d)² = 3/2    Particles: cos30° = √3/2              ║
+║    Materials: (b/d)² = 3/2    Particles: cos30° = √3/2               ║
 ║                                                                      ║
 ║  Authors: Masamichi Iizumi & Tamaki                                  ║
 ╚══════════════════════════════════════════════════════════════════════╝
     """)
-
 
 # ==============================================================================
 # Lazy Import for lindemann (avoids -m execution warning)
