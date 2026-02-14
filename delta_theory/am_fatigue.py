@@ -287,9 +287,19 @@ def am_sn_curve_temperature(
     sigma_a_range: Optional[np.ndarray] = None,
     n_points: int = 200,
     preset: Optional[AMFatiguePreset] = None,
+    T_ref: float = 300.0,
 ) -> Dict[float, Tuple[np.ndarray, np.ndarray]]:
     """
     Generate S-N curves at multiple temperatures.
+
+    Temperature dependence:
+      σ_y(T) is given by sigma_y_func.
+      σ_uts(T) scales with σ_y(T) via constant r_u:
+        r_u = σ_uts(T_ref) / σ_y(T_ref)
+        σ_uts(T) = r_u × σ_y(T)
+
+      This ensures N_static = D × (1 - σ_a/σ_uts(T))^p
+      correctly responds to temperature changes.
 
     Parameters
     ----------
@@ -297,8 +307,7 @@ def am_sn_curve_temperature(
         Function T_K -> σ_y [MPa]. Typically:
         lambda T: calc_sigma_y(mat, T_K=T, ...)['sigma_y']
     sigma_uts : float
-        Ultimate tensile stress [MPa] at reference T.
-        (Assumed constant; for T-dependent σ_uts, pass per-T values.)
+        Ultimate tensile stress [MPa] at reference temperature T_ref.
     structure : str
         Crystal structure.
     temperatures : list of float
@@ -309,19 +318,34 @@ def am_sn_curve_temperature(
         Number of points.
     preset : AMFatiguePreset, optional
         Custom preset.
+    T_ref : float
+        Reference temperature [K] for σ_uts and σ_y.
+        Default: 300 K (room temperature).
 
     Returns
     -------
     dict : {T_K: (sigma_a, N_f)} for each temperature.
     """
+    # r_u is constant: ratio of UTS to yield at reference T
+    sigma_y_ref = sigma_y_func(T_ref)
+    if sigma_y_ref <= 0:
+        raise ValueError(f"σ_y(T_ref={T_ref}) must be positive, got {sigma_y_ref}")
+    r_u = sigma_uts / sigma_y_ref
+
     results = {}
     for T in temperatures:
         sigma_y_T = sigma_y_func(T)
+        sigma_uts_T = r_u * sigma_y_T  # σ_uts scales with σ_y
+
+        if sigma_uts_T <= sigma_y_T:
+            # Shouldn't happen if r_u > 1, but guard anyway
+            sigma_uts_T = sigma_y_T * 1.001
+
         if sigma_a_range is None:
-            sa = np.linspace(sigma_uts * 0.10, sigma_uts * 0.95, n_points)
+            sa = np.linspace(sigma_uts_T * 0.10, sigma_uts_T * 0.95, n_points)
         else:
             sa = sigma_a_range
-        _, nf = am_sn_curve(sigma_y_T, sigma_uts, structure, sa, preset=preset)
+        _, nf = am_sn_curve(sigma_y_T, sigma_uts_T, structure, sa, preset=preset)
         results[T] = (sa, nf)
     return results
 
