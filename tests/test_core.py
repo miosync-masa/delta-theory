@@ -457,7 +457,7 @@ class TestPackageInit:
 
     def test_version(self):
         import delta_theory
-        assert delta_theory.__version__ == "10.2.0"
+        assert delta_theory.__version__ == "10.3.1"
 
     def test_materials_identity(self):
         from delta_theory import MATERIALS
