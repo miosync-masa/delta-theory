@@ -89,15 +89,32 @@ LANT_F_5D1   = 2.5769     # 5d¹電子の方向性寄与 (Ce校正)
 
 
 def fcc_gate(n_d: int, n_f: int = 0, group: int | None = None) -> float:
-    """FCC d軌道ゲート g_d (PCC: 離散二値)
+    """FCC d軌道ゲート g_d (PCC: group-dependent gate)
 
     v10.0: d-metals (n_d ≥ 2) → 1, sp-metals (n_d < 2) → 0
     v10.1: + p-block d¹⁰閉殻 → 0 (方向性なし)
            + ランタノイド 4f → 別チャンネル (g_d=0のまま)
+    v11.0: group-dependent gate (§26.4A f_μ Keyes 二重計上修正)
+           Group ≤ 9:  g_d = 1.0  — 不完全d殻、方向性d結合 full
+           Group = 10: g_d = 0.0  — d殻ほぼ満杯、μ ≈ Keyes (base重複)
+           Group ≥ 11: g_d = 0.86 — 閉殻d¹⁰、s-d混成 anomaly
     """
+    # sp-metals: no d-bonding
+    if n_d < 2:
+        return 0.0
+    # p-block d¹⁰ (e.g. In): no directional d-bonding
     if is_p_block(group) and n_d == 10:
         return 0.0
-    return 1.0 if n_d >= 2 else 0.0
+    # Lanthanides: handled by f_lanthanide channel
+    if n_f > 0:
+        return 0.0
+    # Group-dependent gate (v11)
+    if group is not None and group <= 9:
+        return 1.0      # Ir, Rh: strong directional d-bonding
+    elif group == 10:
+        return 0.0      # Ni, Pd, Pt: nearly-full d-shell, Keyes-like
+    else:
+        return 0.86     # Cu, Au, Ag: closed d¹⁰, s-d hybridization
 
 
 def fcc_f_mu(mu_GPa: float, g_d: float) -> float:
@@ -125,6 +142,10 @@ def fcc_f_shell(n_d: int, period: int, group: int | None = None) -> float:
 def fcc_f_core(gamma_isf: float, g_d: float) -> float:
     """FCC 補助チャンネル②: 積層欠陥エネルギー補正
     γ_isf < γ_ref → 部分転位拡張 → コア抵抗増加
+
+    Note (v11): g_d here is g_d_core (SFE gate), NOT the f_μ gate.
+    SFE effect depends on d-electron existence (n_d ≥ 2 → 1.0),
+    independent of group-dependent μ directionality.
     """
     if gamma_isf < FCC_GAMMA_REF:
         return (FCC_GAMMA_REF / gamma_isf) ** (P_DIM * g_d)
@@ -148,16 +169,19 @@ def fcc_f_lanthanide(n_f: int, n_d: int) -> float:
 
 
 def fcc_f_de(mat: Material) -> float:
-    """FCC SSOC f_de — PCC v10.1
+    """FCC SSOC f_de — PCC v11
     f_de = f_μ(main) × f_shell(aux) × f_core(aux) × f_lanthanide(aux)
+
+    v11: f_μ uses group-dependent g_d, f_core uses g_d_core (SFE gate)
     """
     n_f = _get_n_f(mat)
     group = _get_group(mat)
 
     g_d = fcc_gate(mat.n_d, n_f=n_f, group=group)
+    g_d_core = 1.0 if mat.n_d >= 2 else 0.0  # SFE: d-electron existence only
     return (fcc_f_mu(mat.mu_GPa, g_d)
             * fcc_f_shell(mat.n_d, mat.period, group=group)
-            * fcc_f_core(mat.gamma_isf, g_d)
+            * fcc_f_core(mat.gamma_isf, g_d_core)
             * fcc_f_lanthanide(n_f, mat.n_d))
 
 
@@ -167,12 +191,14 @@ def fcc_f_de_detail(mat: Material) -> Dict[str, float]:
     group = _get_group(mat)
 
     g_d = fcc_gate(mat.n_d, n_f=n_f, group=group)
+    g_d_core = 1.0 if mat.n_d >= 2 else 0.0  # SFE gate
     f_mu = fcc_f_mu(mat.mu_GPa, g_d)
     f_sh = fcc_f_shell(mat.n_d, mat.period, group=group)
-    f_co = fcc_f_core(mat.gamma_isf, g_d)
+    f_co = fcc_f_core(mat.gamma_isf, g_d_core)
     f_la = fcc_f_lanthanide(n_f, mat.n_d)
     return {
         'g_d': g_d,
+        'g_d_core': g_d_core,
         'f_mu': f_mu,
         'f_shell': f_sh,
         'f_core': f_co,
